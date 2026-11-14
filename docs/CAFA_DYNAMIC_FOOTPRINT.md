@@ -26,22 +26,31 @@ The transmit scratch buffer grows by two bytes; each input scratch buffer grows
 by two. There is no heap catalog, plugin binary, sample download or new audio-ISR
 work on the firmware. The existing 640-byte SysEx mailbox already fits v5.
 
-A measured v5 candidate with the full v4 flags above overflowed XIP by
-**1,944 bytes**, after adding CAFA's main-loop functions to existing minsize /
-noinline selection and separating its received view from compiler-merged hot
-globals. Subsequent small display-context/free-text changes have host-test
-coverage; the final target rebuild and further size recovery are still pending
-at this checkpoint. This is not a successful firmware build and must not be
-presented as a flash-ready package.
+The final checkpoint `a303f4f` was rebuilt with the full v4 flags above and
+**fails the real target link by 2,108 bytes**: the image requires
+**583,672/581,564 bytes**. This is 240 bytes above the unmodified v4 build with
+the same flags, after the narrow existing-code optimization. It is not a
+successful firmware build and must not be presented as a flash-ready package.
+
+A diagnostic-only ELF retained from the failed link (without changing any
+linker limit, never packaged) measures:
+
+- data+BSS: **91,324/94,208 bytes**, 2,884 bytes remaining;
+- pool: **351,128/360,448 bytes**, 9,320 bytes remaining;
+- RAM code+ramx: **29,752/32,512 bytes**, 2,760 bytes remaining.
+
+An intermediate candidate overflowed by 1,944 bytes before the last display
+context/free-text changes. The final 2,108-byte result supersedes that figure.
 
 The initial v5 candidate overflowed by 2,760 bytes; the narrow main-loop/layout
-change recovered 816 bytes. Broader noinline experiments on additional UI/main
+change recovered 816 bytes in the intermediate candidate. Broader noinline experiments on additional UI/main
 functions worsened size and were discarded. Linker garbage collection alone
 saved no space. ISR-reachable functions retain the existing optimization mode.
 
 ## Verified host behavior
 
-- v1–v5 protocol tests, malformed-frame rejection and revision/context handling.
+- v1–v5 protocol tests, malformed-frame rejection and revision/context handling,
+  including AddressSanitizer/UBSan (leak detection disabled under ptrace).
 - Native renderer tests including dynamic labels/values, idle redraw suppression,
   incremental/full parity, standalone project preservation and drawn-context INPUT.
 - Real Loom v5 model fixtures: 72 snapshots plus tempo endpoints and session exit.
