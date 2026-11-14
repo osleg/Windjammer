@@ -621,6 +621,9 @@ static void ret_hints(uint32_t ret, int32_t y)
 static void draw_foot(void)
 {
     char s[48], pn[16], ti[20];
+#if FELUCCA_CAFA
+    char remote_engine[17];
+#endif
     const track_t *t = TSEL;
     uint32_t sig;
     const page_t *pg = cur_page();
@@ -635,7 +638,12 @@ static void draw_foot(void)
     uint32_t ret = mom_down() && mom_held(0) ? 1u + ret_mode() : 0u;   /* ((2.0, D 2A) MOMENTARY: how its values */
                                                        /* come back, OCT+ KEEP, for the whole line */
     #if FELUCCA_CAFA
-    if (cafa_native_view) { ename=cafa_native_v4 ? "LOOM" : "CAFA"; hints=tiles=0; ret=0; }
+    if (cafa_native_view) {
+        ename=cafa_native_v4 ? "LOOM" : "CAFA"; hints=tiles=0; ret=0;
+        if(cafa.version==5 && cafa_native_view[1]==CAFA_DYNAMIC_PAGE) {
+            memcpy(remote_engine,cafa_native_view+20,16);remote_engine[16]=0;ename=remote_engine;
+        }
+    }
 #endif
     if (fr.on) {                                       /* ((2.5) a FREE TAKE's picker: its keys, as a layer's footer */
         khint_t kh[3] = {{KC_OCTUP, "KEEP"}, {KC_OCTDN, "BACK"}, {KC_PLAY, song.playing ? "STOP" : "LISTEN"}};
@@ -820,6 +828,11 @@ static void draw_foot(void)
         } else
 #endif
         x += cv_icon_in(x, ly + AF_S_CAP_Y, 0, AF_S_CAP_H, 16, trk_icon(song.sel, 1), T_ACCENT, T_BG) + 5;
+        #if FELUCCA_CAFA
+        if(cafa_native_view && cafa.version==5 && cafa_native_view[1]==CAFA_DYNAMIC_PAGE)
+            x = cv_free_text(x, ly, &AF_S, ename, T_THEME, T_BG, 80); /* runtime names are free text */
+        else
+#endif
         x = cv_text_fit(x, ly, &AF_S, ename, T_THEME, T_BG, 80);
         if (list_mode())                               /* ((Skiff U2) PRESETS lists the favourites; phase 9: a type) */
             x = cv_text(x + 6, ly, &AF_S, LIST_NAME[list_mode()], T_ACCENT);

@@ -68,6 +68,30 @@ static void versions(void) {
  }
  puts("CAFA v1/v2: negotiated-version isolation, all flags, native ADSR bounds, malformed rejection, lease protection and cross-version reconnect passed");
 }
+static void dynamic_v5(void) {
+ cafa_link_t c={0},before;uint8_t f[9+CAFA_DYNAMIC_BYTES];unsigned i;
+ memset(f,0,sizeof f);frame(f,CAFA_HELLO,101,0);f[3]=5;
+ assert(cafa_receive(&c,f,9,0)==1);
+ frame(f,CAFA_STATE,101,16383);f[3]=5;f[10]=9;
+ cafa_put14(f+9+94,3);cafa_put14(f+9+96,19);cafa_put14(f+9+98,20);
+ memcpy(f+9+100,"-12.34 dB   SAW         OFF         RUN         ",48);
+ for(i=0;i<4;i++)f[9+148+i]=i+1;
+ cafa_put14(f+9+152,16383);
+ assert(cafa_receive(&c,f,sizeof f,1)==2);before=c;
+ for(i=0;i<sizeof f;i++) {assert(!cafa_receive(&c,f,i,2));assert(!memcmp(&c,&before,sizeof c));}
+ cafa_put14(f+7,0);
+ for(i=0;i<sizeof f;i++) {f[i]|=128;assert(!cafa_receive(&c,f,sizeof f,2));assert(!memcmp(&c,&before,sizeof c));f[i]&=127;}
+ { const unsigned pos[]={94,92,96,100,148,154,155};const uint8_t invalid[]={0,3,20,31,5,1,1};
+   for(i=0;i<sizeof pos/sizeof pos[0];i++){uint8_t old=f[9+pos[i]];f[9+pos[i]]=invalid[i];assert(!cafa_receive(&c,f,sizeof f,2));assert(!memcmp(&c,&before,sizeof c));f[9+pos[i]]=old;}
+ }
+ cafa_put14(f+9+152,0);assert(cafa_receive(&c,f,sizeof f,3)==3 && c.revision==0);
+ before=c;assert(!cafa_receive(&c,f,sizeof f,4));assert(!memcmp(&c,&before,sizeof c));
+ /* Native pages still work, including empty extension and ENV bounds. */
+ memset(f+9+92,0,64);f[10]=3;cafa_put14(f+7,1);cafa_put14(f+9+84,101);
+ assert(!cafa_receive(&c,f,sizeof f,5));cafa_put14(f+9+84,100);
+ assert(cafa_receive(&c,f,sizeof f,6)==3);
+ puts("CAFA v5: atomic bounded catalog page, all truncations/high bits, metadata ranges, context wrap, stale isolation and native-page fallback passed");
+}
 int main(void) {
  cafa_link_t c={0}, before; uint8_t f[101]; unsigned i,j,r=1234567;
  frame(f,CAFA_HELLO,7,0); assert(cafa_receive(&c,f,9,0)==1);
@@ -96,6 +120,7 @@ int main(void) {
  assert(!cafa_expired(&c,0xffffff00u+1499u)); assert(cafa_expired(&c,0xffffff00u+1500u));
  frame(f,CAFA_BYE,7,0); assert(cafa_receive(&c,f,9,20)==4);
  versions();
+ dynamic_v5();
  for(i=3;i<=4;i++) {
   memset(&c,0,sizeof c);frame(f,CAFA_HELLO,97,0);f[3]=i;assert(cafa_receive(&c,f,9,0)==1);
   frame(f,CAFA_STATE,97,1);f[3]=i;f[9]=7;f[10]=i==4?8:5;cafa_put14(f+18,12);

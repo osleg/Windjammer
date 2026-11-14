@@ -4,14 +4,17 @@
 #define CAFA_PROTOCOL_H
 #include <stdint.h>
 #define CAFA_STATE_BYTES 92u
+#define CAFA_DYNAMIC_BYTES 156u
+#define CAFA_DYNAMIC_PAGE 9u
+static uint32_t cafa_state_bytes(uint32_t version) { return version==5 ? CAFA_DYNAMIC_BYTES : CAFA_STATE_BYTES; }
 #define CAFA_LEASE_MS 1500u
 enum { CAFA_HELLO=1, CAFA_ACK, CAFA_STATE, CAFA_HEARTBEAT, CAFA_BYE, CAFA_INPUT };
 typedef struct {
     uint32_t last_ms;
     uint16_t session, revision;
-    uint8_t version; /* negotiated wire version: 1 proxy, 2 native ENV, 3 Loom proxy, 4 Loom native */
+    uint8_t version; /* negotiated wire version: 1 proxy, 2 native ENV, 3 Loom proxy, 4 Loom native, 5 runtime catalog */
     uint8_t phase; /* 0 standalone, 1 negotiated, 2 authoritative state received */
-    uint8_t view[CAFA_STATE_BYTES];
+    uint8_t view[CAFA_DYNAMIC_BYTES];
 } cafa_link_t;
 static uint32_t cafa_u14(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 7; }
 static void cafa_put14(uint8_t *p, uint32_t v) { p[0]=v&127u; p[1]=(v>>7)&127u; }
@@ -23,7 +26,7 @@ static int cafa_receive(cafa_link_t *c, const uint8_t *f, uint32_t n, uint32_t n
 {
     uint32_t i, sid, rev, len, page, head;
     const uint8_t *p=f+9;
-    if (n<9u || f[0]!=0x7d || f[1]!=0x43 || f[2]!=0x41 || (f[3]<1 || f[3]>4)) return 0;
+    if (n<9u || f[0]!=0x7d || f[1]!=0x43 || f[2]!=0x41 || (f[3]<1 || f[3]>5)) return 0;
     for (i=0;i<n;i++) if (f[i]&128u) return 0;
     sid=cafa_u14(f+5); rev=cafa_u14(f+7);
     if (!sid) return 0;
@@ -36,19 +39,30 @@ static int cafa_receive(cafa_link_t *c, const uint8_t *f, uint32_t n, uint32_t n
     if (!c->phase || c->session!=sid || c->version!=f[3]) return 0;
     if (f[4]==CAFA_BYE && n==9u) return 4;
     if (f[4]==CAFA_HEARTBEAT && n==9u) { c->last_ms=now; return 5; }
-    if (f[4]!=CAFA_STATE || n!=9u+CAFA_STATE_BYTES ||
+    if (f[4]!=CAFA_STATE || n!=9u+cafa_state_bytes(c->version) ||
         (c->phase==2 && !cafa_newer(rev,c->revision))) return 0;
     len=cafa_u14(p+3); page=cafa_u14(p+5); head=cafa_u14(p+7);
-    if (p[0]>=(c->version>=3 ? 8 : 6) || p[1]>(c->version==4 ? 8 : 5) || ((c->version==1 || c->version==3) ? p[2]>7 : p[2]>55) || !len || len>1024 || page>=len || (page&15u) ||
+    if (p[0]>=(c->version>=3 ? 8 : 6) || p[1]>(c->version>=4 ? (c->version==5 ? 9 : 8) : 5) || ((c->version==1 || c->version==3) ? p[2]>7 : p[2]>55) || !len || len>1024 || page>=len || (page&15u) ||
         (head!=16383u && head>=len) || cafa_u14(p+9)<(c->version>=3 ? 12u : 20u) || cafa_u14(p+9)>300 ||
         p[13]>3 || p[19]>63) return 0;
     if (c->version==2 && p[1]==3)
         for (i=0;i<4;i++) if (cafa_u14(p+84+2*i)>127) return 0;
-    if (c->version==4 && p[1]==3)
+    if (c->version>=4 && p[1]==3)
         for (i=0;i<4;i++) if (cafa_u14(p+84+2*i)>100) return 0;
     for (i=20;i<84;i++) if (p[i] && (p[i]<32 || p[i]>126)) return 0;
+    if (c->version==5) {
+        /* A single bounded page is committed together with its values. The host
+         * owns the catalog and exact control domains; no engine enum lives here. */
+        for (i=92;i<100;i+=4) {
+            uint32_t index=cafa_u14(p+i), count=cafa_u14(p+i+2);
+            if (count ? index>=count : (index || p[1]==CAFA_DYNAMIC_PAGE)) return 0;
+        }
+        for (i=100;i<148;i++) if (p[i] && (p[i]<32 || p[i]>126)) return 0;
+        for (i=148;i<152;i++) if (p[i]>4) return 0;
+        if (p[154] || p[155]) return 0;
+    }
     i=c->phase==1 ? 2u : 3u;
-    { uint32_t k; for (k=0;k<CAFA_STATE_BYTES;k++) c->view[k]=p[k]; }
+    { uint32_t k; for (k=0;k<cafa_state_bytes(c->version);k++) c->view[k]=p[k]; }
     c->revision=(uint16_t)rev; c->last_ms=now; c->phase=2;
     return (int)i;
 }

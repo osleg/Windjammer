@@ -32,7 +32,7 @@ else
     echo "SKIP: Java/C session integration requires a JDK"
 fi
 
-if [ -n "${LOOM_V4_FIXTURES:-}" ]; then
+if [ -n "${LOOM_V5_FIXTURES:-${LOOM_V4_FIXTURES:-}}" ]; then
     $CC -O1 -w ${CAFA_TEST_CFLAGS:-} -Ibuild/gen -Ifirmware/src -Itests tests/loom_native_lint.c -lm -o build/cafa-tests/loom-lint
-    ASAN_OPTIONS=detect_leaks=0 build/cafa-tests/loom-lint "$LOOM_V4_FIXTURES"
+    ASAN_OPTIONS=detect_leaks=0 build/cafa-tests/loom-lint "${LOOM_V5_FIXTURES:-${LOOM_V4_FIXTURES:-}}"
 fi

@@ -86,15 +86,16 @@ static void loom_v4(void) {
  puts("Loom v4: all nine native pages, all palettes/tall cards, T8, state isolation, idle no-write, incremental/full parity and offset units passed");
 }
 static void loom_fixtures(void) {
- const char *dir=getenv("LOOM_V4_FIXTURES");char path[1024];uint8_t f[140];unsigned t,p;FILE *fp;size_t n;
+ const char *dir=getenv("LOOM_V5_FIXTURES");unsigned version=5;char path[1024];uint8_t f[180];unsigned t,p;FILE *fp;size_t n;
+ if(!dir){dir=getenv("LOOM_V4_FIXTURES");version=4;}
  if(!dir)return;
  ui_power_on();cafa.phase=0;usb.config=1;
  snprintf(path,sizeof path,"%s/hello.syx",dir);fp=fopen(path,"rb");assert(fp);n=fread(f,1,sizeof f,fp);fclose(fp);
- cafa_frame(f+1,n-2);so_r=so_w;assert(cafa.phase==1 && cafa.version==4);
+ cafa_frame(f+1,n-2);so_r=so_w;assert(cafa.phase==1 && cafa.version==version);
  for(t=1;t<=8;t++)for(p=0;p<9;p++) {
   snprintf(path,sizeof path,"%s/t%u-p%u.syx",dir,t,p);fp=fopen(path,"rb");assert(fp);n=fread(f,1,sizeof f,fp);fclose(fp);
-  assert(n==103 && f[0]==240 && f[n-1]==247);cafa_frame(f+1,n-2);so_r=so_w;
-  assert(cafa.phase==2 && cafa.view[0]==t-1 && cafa.view[1]==p && cafa.revision==cafa_u14(f+8));cafa_draw();
+  assert(n==11+cafa_state_bytes(version) && f[0]==240 && f[n-1]==247);cafa_frame(f+1,n-2);so_r=so_w;
+  assert(cafa.phase==2 && cafa.view[0]==t-1 && cafa.view[1]==(version==5 && p==2 ? 9 : p) && cafa.revision==cafa_u14(f+8));cafa_draw();
   if(t==8){snprintf(path,sizeof path,"build/loom-v4-model-%u.ppm",p);dump(path);}
  }
  for(t=0;t<2;t++) {
@@ -103,7 +104,41 @@ static void loom_fixtures(void) {
  }
  snprintf(path,sizeof path,"%s/bye.syx",dir);fp=fopen(path,"rb");assert(fp);n=fread(f,1,sizeof f,fp);fclose(fp);
  cafa_frame(f+1,n-2);assert(!cafa.phase);
- puts("Real Loom v4 app fixtures: 72 model snapshots, 12/300 BPM, HELLO/BYE accepted and natively drawn");
+ puts("Real Loom app fixtures: 72 model snapshots, 12/300 BPM, HELLO/BYE accepted and natively drawn");
+}
+static unsigned dynamic_drain(uint8_t *f) {
+ unsigned n=0;while(so_r!=so_w){uint32_t w=sx_out_q[so_r++%SXQ];unsigned cin=w&15,k=cin==4?3:cin-4,j;
+ assert(k<=3);for(j=0;j<k;j++)f[n++]=(w>>(8+8*j))&255;}return n;
+}
+static void dynamic_v5(void) {
+ uint8_t f[165],out[128],saved_tracks[sizeof trk],saved_ui[sizeof ui];song_t saved_song;
+ unsigned pal,large,i,rev=1;char label[9],value[13];
+ for(pal=0;pal<NPALETTES;pal++)for(large=0;large<2;large++) {
+  ui_power_on();palette_set(pal);if(large)ui_prefs|=PREF_LARGE;
+  cafa.phase=0;cafa_release_guard=0;host_pressed=host_notes=0;memset(f,0,sizeof f);state(f,0,9);f[3]=5;f[4]=CAFA_HELLO;
+  cafa_frame(f,9);so_r=so_w;f[4]=CAFA_STATE;cafa_put14(f+7,rev++);
+  memcpy(f+29,"RUNTIME PLUGIN  ",16);memcpy(f+45,"CUSTOM BANK     ",16);
+  memcpy(f+61,"GAIN    WAVE    ENABLE  TRIGGER ",32);
+  cafa_put14(f+9+92,1);cafa_put14(f+9+94,3);cafa_put14(f+9+96,99);cafa_put14(f+9+98,100);
+  memcpy(f+9+100,"-12.34 dB   SAW         OFF         RUN         ",48);
+  for(i=0;i<4;i++)f[9+148+i]=i+1;cafa_put14(f+9+152,42);
+  cafa_frame(f,sizeof f);so_r=so_w;assert(cafa.phase==2 && cafa.version==5);cafa_draw();
+  memcpy(saved_tracks,trk,sizeof trk);memcpy(saved_ui,&ui,sizeof ui);saved_song=song;
+  native_pixels=0;cafa_draw();assert(!native_pixels);
+  cafa_dynamic_value(cafa.view,0,label,value);assert(!strcmp(label,"GAIN") && !strcmp(value,"-12.34 dB"));
+  /* Text-only changes must redraw despite an unchanged normalized knob value. */
+  memcpy(f+9+100,"+6.00 dB    ",12);cafa_put14(f+7,rev++);cafa_frame(f,sizeof f);so_r=so_w;
+  native_pixels=0;cafa_draw();assert(native_pixels);for(i=0;i<42;i++)cafa_draw();
+  memcpy(image,host_screen,sizeof image);cafa_dirty=2;cafa_draw();assert(!memcmp(image,host_screen,sizeof image));
+  assert(!memcmp(saved_tracks,trk,sizeof trk) && !memcmp(saved_ui,&ui,sizeof ui) && !memcmp(&saved_song,&song,sizeof song));
+  if(pal==0 && !large)dump("build/cafa-dynamic-v5.ppm");
+  /* Inputs refer to the page actually shown, not a newer page waiting for draw. */
+  cafa_put14(f+7,rev++);cafa_put14(f+9+152,43);cafa_frame(f,sizeof f);so_r=so_w;
+  fm1_in.buttons=fm1_in.notes=0;cafa_first=1;cafa_input();assert(dynamic_drain(out)==33 && cafa_u14(out+30)==42);
+  cafa_draw();host_enc[panel.enc[0]]=panel.dir[0];cafa_input();assert(dynamic_drain(out)==33 && cafa_u14(out+30)==43);
+ }
+ f[4]=CAFA_BYE;cafa_frame(f,9);assert(!cafa.phase && !cafa_audio_on);
+ puts("CAFA v5: runtime labels/formatted values, 100-engine catalog, native cards in all palettes/sizes, text-only redraw, project isolation and displayed-context INPUT passed");
 }
 int main(void) {
  uint8_t f[101],saved_tracks[sizeof trk],saved_ui[sizeof ui],saved_motion[sizeof motion],saved_fav[sizeof favorites];
@@ -156,5 +191,6 @@ int main(void) {
  palette_parity();
  loom_v4();
  loom_fixtures();
+ dynamic_v5();
  return 0;
 }

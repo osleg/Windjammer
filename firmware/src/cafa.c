@@ -3,11 +3,11 @@
 static uint32_t cafa_buttons, cafa_keys, cafa_tx_serial;
 static uint8_t cafa_dirty, cafa_first, cafa_release_guard;
 static uint8_t cafa_native_shown __attribute__((section(".bss.cafa_ui")));
-static uint8_t cafa_drawn[CAFA_STATE_BYTES] __attribute__((section(".bss.cafa_ui"))); /* last pixels shown, not merely last state received */
+static uint8_t cafa_drawn[CAFA_DYNAMIC_BYTES] __attribute__((section(".bss.cafa_ui"))); /* last pixels shown, not merely last state received */
 /* Entire frames queued atomically. Never block input/the lease watchdog on a MIDI host. */
 static int cafa_send(uint32_t cmd, uint32_t serial, const uint8_t *p, uint32_t n)
 {
-    uint8_t f[31];
+    uint8_t f[33];
     uint32_t i=0, size=n+11u;
     if (!usb.config || size>sizeof f || SXQ-(so_w-so_r)<(size+2u)/3u) return 0;
     f[0]=0xf0; f[1]=0x7d; f[2]=0x43; f[3]=0x41; f[4]=cafa.version; f[5]=(uint8_t)cmd;
@@ -75,8 +75,8 @@ static int cafa_frame(const uint8_t *p, uint32_t n)
     if (cafa_expired(&cafa,fm1_ms)) cafa_leave();
     /* Held/step LED bytes 14..19 are not LCD content. A key press must not blank
      * the display just because its physical LED changes. */
-    changed=n==9u+CAFA_STATE_BYTES && (memcmp(cafa.view,p+9,14) ||
-            memcmp(cafa.view+20,p+29,CAFA_STATE_BYTES-20u));
+    changed=n>=9u && n==9u+cafa_state_bytes(p[3]) && (memcmp(cafa.view,p+9,14) ||
+            memcmp(cafa.view+20,p+29,cafa_state_bytes(p[3])-20u));
     action=cafa_receive(&cafa,p,n,fm1_ms);
     if (action==1 || action==5) {
         if (!cafa_send(CAFA_ACK,action==1 ? 0u : cafa.revision,&ack,1)) cafa_leave();
@@ -99,7 +99,11 @@ static int cafa_emit(uint8_t *p,uint32_t b,uint32_t keys)
     uint32_t k;
     cafa_put14(p,b);
     for (k=0;k<4;k++) p[2+k]=(keys>>(7*k))&127u;
-    if (!cafa_send(CAFA_INPUT,(cafa_tx_serial+1u)&16383u,p,20)) { cafa_leave(); return 0; }
+    if(cafa.version==5) {
+        const uint8_t *shown=cafa_native_shown ? cafa_drawn : cafa.view;
+        memcpy(p+20,shown+152,2);
+    }
+    if (!cafa_send(CAFA_INPUT,(cafa_tx_serial+1u)&16383u,p,cafa.version==5 ? 22u : 20u)) { cafa_leave(); return 0; }
     cafa_tx_serial=(cafa_tx_serial+1u)&16383u; cafa_first=0; cafa_buttons=b; cafa_keys=keys;
     return 1;
 }
@@ -107,7 +111,7 @@ static int cafa_emit(uint8_t *p,uint32_t b,uint32_t keys)
 static int cafa_input(void)
 {
     uint32_t k,b=0,keys=fm1_in.notes,changed=0,pressed,np,bp=0,rb,rk;
-    uint8_t p[20], release[20]={0};
+    uint8_t p[22], release[22]={0};
     if (cafa.phase && (!usb.config || cafa_expired(&cafa,fm1_ms))) cafa_leave();
     if (cafa.phase!=2 && !cafa_release_guard) return 0;
     pressed=fm1_input_edges(0); np=fm1_input_note_edges();
@@ -150,10 +154,11 @@ static __attribute__((noinline)) int cafa_draw(void)
     char b[24];
     static const char *const pages[]={"HOME","SEQ","SOUND","ENV","FX","MIX"};
     if (cafa.phase!=2) return 0;
-    if (cafa.version==4 || (cafa.version==2 && p[1]==3)) {
-        cafa_native_draw(p,old,full || !cafa_native_shown || p[0]!=old[0] || p[1]!=old[1],cafa_dirty!=0);
+    if (cafa.version>=4 || (cafa.version==2 && p[1]==3)) {
+        cafa_native_draw(p,old,full || !cafa_native_shown || p[0]!=old[0] || p[1]!=old[1] ||
+                (cafa.version==5 && memcmp(p+152,old+152,2)),cafa_dirty!=0);
         cafa_native_shown=1; cafa_dirty=0;
-        memcpy(cafa_drawn,p,CAFA_STATE_BYTES);
+        memcpy(cafa_drawn,p,cafa_state_bytes(cafa.version));
         return 1;
     }
     if (cafa_native_shown) { full=1; cafa_dirty=2; cafa_native_shown=0; }
@@ -196,7 +201,7 @@ static __attribute__((noinline)) int cafa_draw(void)
         }
     }
     if(full)draw_text_box(8,222,224,&AF_S,"CAFA  /  PHONE ENGINE",T_DIM,0);
-    memcpy(cafa_drawn,p,CAFA_STATE_BYTES);
+    memcpy(cafa_drawn,p,cafa_state_bytes(cafa.version));
     return 1;
 }
 static int cafa_leds(void)

@@ -135,7 +135,7 @@ static inline __attribute__((always_inline)) void *audio_far(void *p) { void *vo
 #error "CAFA requires the existing USB SysEx transport"
 #endif
 #include "cafa_protocol.h"
-static cafa_link_t cafa;
+static cafa_link_t cafa __attribute__((section(".bss.cafa_ui")));
 static volatile uint8_t cafa_audio_on;
 static int cafa_input(void), cafa_draw(void), cafa_leds(void);
 static int cafa_frame(const uint8_t *, uint32_t);

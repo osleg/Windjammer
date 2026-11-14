@@ -34,14 +34,24 @@ static void cafa_loom_value(const uint8_t *p,uint32_t k,char *label,char *value,
     }
     fmt_int(value,v);
 }
+static void cafa_dynamic_value(const uint8_t *p,uint32_t k,char *label,char *value)
+{
+    uint32_t n=8;
+    memcpy(label,p+52+8*k,8);label[8]=0;
+    while(n && label[n-1]==' ')label[--n]=0;
+    n=12;memcpy(value,p+100+12*k,12);value[12]=0;
+    while(n && value[n-1]==' ')value[--n]=0;
+}
 static void cafa_loom_columns(const uint8_t *p)
 {
     uint32_t k;
     memset(card_mot_mask,0,sizeof card_mot_mask);
     for(k=0;k<4;k++) {
-        char label[9],value[12];const char *unit;
-        cafa_loom_value(p,k,label,value,&unit);
-        draw_column(k,label,value,unit,str_eq(label,"UNITY") ? VR_DIM : VR_LIVE,-1,ICON_NONE);
+        char label[9],value[13];const char *unit="";
+        int dynamic=cafa.version==5 && p[1]==CAFA_DYNAMIC_PAGE;
+        if(dynamic)cafa_dynamic_value(p,k,label,value);
+        else cafa_loom_value(p,k,label,value,&unit);
+        draw_column(k,label,value,unit,(dynamic ? !p[148+k] : str_eq(label,"UNITY")) ? VR_DIM : VR_LIVE,-1,ICON_NONE);
     }
 }
 /* A Loom ADSR preview: cubic time controls (2/3/3 seconds), exponential
@@ -83,8 +93,12 @@ static void cafa_loom_graph(const uint8_t *p)
             cv_rrect(x,y,24,cell,3,(mask>>k)&1u ? T_THEME:T_SURF,T_BG);
             if(head==first+k)cv_rect(x,y+cell-2,24,2,T_TEXT);
         }
-        { char b[24];fmt_int(b,(int32_t)first+1);str_cpy(b+str_len(b)," / ",sizeof b-str_len(b));
-          fmt_int(b+str_len(b),(int32_t)cafa_u14(p+3));
+        { char b[24];
+          int dynamic=cafa.version==5 && p[1]==CAFA_DYNAMIC_PAGE;
+          str_cpy(b,dynamic ? "BANK " : "",sizeof b);
+          fmt_int(b+str_len(b),dynamic ? (int32_t)cafa_u14(p+92)+1 : (int32_t)first+1);
+          str_cpy(b+str_len(b)," / ",sizeof b-str_len(b));
+          fmt_int(b+str_len(b),(int32_t)cafa_u14(p+(dynamic ? 94 : 3)));
           cv_text(8,h-15,&AF_S,b,T_MID);
           cv_text_r(232,h-15,&AF_S,(p[2]&4)?"MUTED":"STEPS",T_MID,T_BG); }
     }
@@ -108,14 +122,14 @@ static __attribute__((noinline)) void cafa_native_draw(const uint8_t *p,const ui
     ui.frame++;
     for (k=0;k<4;k++) {
         view.p[id[k]]=(int16_t)cafa_u14(p+84+2*k);
-        if (!full && memcmp(p+84+2*k,old+84+2*k,2)) { ui.hot_col=(uint8_t)k; ui.hot_t=40; }
+        if (!full && (memcmp(p+84+2*k,old+84+2*k,2) || (cafa.version==5 && p[1]==CAFA_DYNAMIC_PAGE && memcmp(p+100+12*k,old+100+12*k,12)))) { ui.hot_col=(uint8_t)k; ui.hot_t=40; }
     }
     view.p[P_SLEN]=16; /* never index the phone's 1024-step timeline in a 64-step native track */
     view.seq_idx=(uint16_t)(head==16383u ? 0 : head); /* ENV header only; no step renderer is entered */
     tsel=&view; song.sel=p[0]; song.playing=(p[2]&1u) && head!=16383u;
     song.rec=(uint8_t)(((p[2]>>1)&1u)<<p[0]); song.octave=(int8_t)((p[2]>>3)-3);
     song.g[G_BPM]=(int16_t)cafa_u14(p+9); fr.on=0;
-    cafa_native_view=p; cafa_native_v4=cafa.version==4;
+    cafa_native_view=p; cafa_native_v4=cafa.version>=4;
     if (ui.hot_t) ui.hot_t--;
     if (full) draw_frame();
     draw_head();
