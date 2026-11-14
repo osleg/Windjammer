@@ -930,7 +930,10 @@ static __attribute__((noinline)) void rev_side_mix(int32_t *l, int32_t *r, uint3
  * -> dist -> SLICER -> level / pan / sends -> buses -> master; out: stereo Q15 */
 static void events_block(uint32_t n);                    /* seq.c */
 #if FELUCCA_CPU2
-static int32_t wet[CTL];                                 /* (the dry mix and the sends: mx[0], above) */
+/* Keep this hot scratch buffer directly addressable instead of merged behind
+ * main-loop globals: v5 catalog storage otherwise adds address work/register
+ * spills to the audio ISR. Same zero-initialized RAM, lifetime and DSP math. */
+static int32_t wet[CTL] __attribute__((section(".bss.fx_wet"))); /* dry mix and sends: mx[0], above */
 /* a track's cost for the second core's split (mix_split, after Jangada's and Felucca 1.6.1's): its voices x its engine's
  * cost per voice (ENG_VCOST: host instructions per sample per voice, Felucca's measures; DRUM-X as DRUM's), and its
  * DIST / SLICER while it sounds or its tail runs. ENGINES[] order. An estimate: it only steers the split, the sound does

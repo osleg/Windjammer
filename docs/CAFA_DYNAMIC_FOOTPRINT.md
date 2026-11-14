@@ -14,12 +14,13 @@ Run `tools/ci/build_cafa.sh` with `JIELI_TOOLCHAIN` and `AC79_SDK` set. It
 selects FM-1, CAFA, USB playback/recording, engine balance and SLICE, disables
 CDC, and sets **FELUCCA_FACTORY_SAMPLES=0**. That last flag is essential: the
 historical overflowing measurements below left factory instrument samples on.
-The existing sample omission option was sufficient; no further DSP, UI or
-linker changes were necessary.
+The existing sample omission option solves the flash limit. Two hot buffers
+are also kept in separate BSS input sections to restore the original target
+addressing cost; no DSP math, UI behavior or memory limits change.
 
-Measured on 2026-11-14 from published v5 source `b9d65ab`:
+Measured on 2026-11-14 after the hot-buffer section fix:
 
-- Application: **495,884 / 581,564 bytes**, **85,680 bytes free**.
+- Application: **495,856 / 581,564 bytes**, **85,708 bytes free**.
 - data+BSS: **91,324 / 94,208 bytes**, 2,884 bytes free.
 - pool: **351,128 / 360,448 bytes**, 9,320 bytes free.
 - RAM code+ramx: **29,752 / 32,512 bytes**, 2,760 bytes free.
@@ -35,15 +36,33 @@ archives development binaries, licences, logs, checksums and source provenance.
 It neither releases nor flashes firmware. Hardware sound, USB latency, recovery
 and stack high-water checks remain unqualified.
 
-### Remaining CPU gate failures
+### Target CPU gate: passes without changed budgets
 
-The unchanged `tests/target_budget.txt` gate does **not** pass this companion
-configuration. It reports audio ISR `fm1_alnk0_irq` cost 1,399 against 1,266
-(+11%) and `strum_tick` 155 against 139 (+12%), with a +10% allowed threshold.
-These are static loop-instruction estimates, not measured hardware cycles.
-No budget was increased. The companion CI preserves the failures and still runs
-the independent protocol/USB checks. A fitting package is not a fully qualified
-firmware release.
+The first sample-light build (`b0f6e24`, 495,884 bytes) failed the unchanged
+`tests/target_budget.txt` gate: audio ISR cost 1,399 versus budget 1,266 (+11%)
+and `strum_tick` 155 versus 139 (+12%), with a +10% allowed threshold.
+An exact sample-light v4 build measured 1,390 and 139 respectively and passed.
+
+The v5 catalog globals changed JieLi LLVM's global merging: the hot `sq` queue
+and `wet` buffer acquired larger offsets behind unrelated globals, adding
+address calculations and register pressure. Putting those two buffers in
+`.bss.strum` and `.bss.fx_wet` input sections restores **ISR 1,390** and
+**strum_tick 139**, exactly the v4 costs. Both still live in the original BSS
+RAM region and are initialized by the same startup code. No DSP algorithm,
+loop iteration count, budget entry or tolerance was changed. The complete
+target-cost check now passes. These are static estimates, not hardware cycles.
+
+### Broad host suite caveats
+
+The stock aggregate suite was also run against the sample-light generated
+assets. It is **not green**: its stock UI/SLICE expectations assume factory
+samples exist, and 18 of 176 audio golden renders change (all SAMPLE/GRAIN
+factory-material presets). The other 158 goldens remain unchanged, with no
+reported audio-health, voice/routing failures or crashes. Golden files were
+not regenerated. LeakSanitizer cannot run under this environment's ptrace;
+that sanitizer stage is not a pass. The dedicated companion suites and target
+budget check are the configuration-specific CI gates. Hardware validation
+remains required.
 
 ## Historical factory-samples-on source baseline
 

@@ -450,8 +450,11 @@ static void trk_sound_on(track_t *t, uint32_t note, uint32_t vel);
  * events_block, the audio ISR; the main loop's notes start at once); strum_flush, at its end, orders them, starts the
  * first and times the others; strum_tick, at the next blocks' start, starts each as its time comes. A note let go
  * before its time never starts; a panic forgets them. One note, a kit, MONO / LEGATO / UNISON, STRUM OFF: at once */
+/* A separate BSS input section prevents JieLi LLVM global-merging this hot
+ * queue behind unrelated USB/catalog globals, which adds inner-loop address
+ * instructions. It stays in the same zero-initialized RAM region. */
 #define SQ_N 8u
-static struct { uint8_t n, fresh, alt, note[SQ_N], vel[SQ_N]; uint16_t due[SQ_N]; } sq[NTRK];   /* fresh: the last
+static struct { uint8_t n, fresh, alt, note[SQ_N], vel[SQ_N]; uint16_t due[SQ_N]; } sq[NTRK] __attribute__((section(".bss.strum")));   /* fresh: the last
                                                          * ones, this block's, not yet timed */
 static uint8_t sq_in;
 static int chord_kit(const track_t *t);
