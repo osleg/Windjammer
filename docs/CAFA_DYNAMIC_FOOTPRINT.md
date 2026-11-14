@@ -21,9 +21,9 @@ addressing cost; no DSP math, UI behavior or memory limits change.
 Measured on 2026-11-14 after the hot-buffer section fix:
 
 - Application: **495,856 / 581,564 bytes**, **85,708 bytes free**.
-- data+BSS: **91,324 / 94,208 bytes**, 2,884 bytes free.
+- data+BSS: **91,332 / 94,208 bytes**, 2,876 bytes free.
 - pool: **351,128 / 360,448 bytes**, 9,320 bytes free.
-- RAM code+ramx: **29,752 / 32,512 bytes**, 2,760 bytes free.
+- RAM code+ramx: **29,760 / 32,512 bytes**, 2,752 bytes free.
 - Loader: **7,273 bytes**. Development package: **610,429 bytes** (the package
   includes the loader and packaging data; its size is not the app XIP budget).
 - Factory instrument data removed: PIANO/FLUTE/SAX and their aliases. Their
