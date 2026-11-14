@@ -173,3 +173,10 @@ For Loom v4's expanded native companion pages, use the configuration in
 [LOOM_V4.md](docs/LOOM_V4.md). `FELUCCA_FACTORY_SAMPLES=0` omits compiled factory
 instrument samples to free flash; user sample slots and uploads are retained.
 This is optional and defaults to the original factory sample set.
+
+For the fitting **v5 runtime-catalog companion**, run `tools/ci/build_cafa.sh`
+after setting the toolchain/SDK paths. It explicitly omits factory instrument
+samples and retains user slots, SLICE loops, standalone engines, UI and USB audio.
+See [measured memory budgets](docs/CAFA_DYNAMIC_FOOTPRINT.md). The dedicated
+CAFA workflow builds this configuration on `cafa/**` pushes; artifacts are
+experimental and are not hardware-qualified.

@@ -1,18 +1,57 @@
-# Dynamic catalog target footprint: measured checkpoint
+# Dynamic catalog target footprint: fitting sample-light build
 
 Measured on the JieLi pi32v2 Linux toolchain `20260730.1`, with the pinned AC79
 SDK and the repository's actual FM-1 linker script. No flash/RAM limit was
-increased, no standalone engine/sample/UI was removed, and USB audio remains on.
+increased. The fitting configuration omits factory instrument samples, as
+authorized, while retaining standalone engines, UI, user sample slots, SLICE
+BREAK/FUNK loops and USB audio.
 
 The FM-1 XIP application limit is **581,564 bytes** (`0x8dfbc`).
 
-## Source-branch baseline
+## Successful v5 companion build
+
+Run `tools/ci/build_cafa.sh` with `JIELI_TOOLCHAIN` and `AC79_SDK` set. It
+selects FM-1, CAFA, USB playback/recording, engine balance and SLICE, disables
+CDC, and sets **FELUCCA_FACTORY_SAMPLES=0**. That last flag is essential: the
+historical overflowing measurements below left factory instrument samples on.
+The existing sample omission option was sufficient; no further DSP, UI or
+linker changes were necessary.
+
+Measured on 2026-11-14 from published v5 source `b9d65ab`:
+
+- Application: **495,884 / 581,564 bytes**, **85,680 bytes free**.
+- data+BSS: **91,324 / 94,208 bytes**, 2,884 bytes free.
+- pool: **351,128 / 360,448 bytes**, 9,320 bytes free.
+- RAM code+ramx: **29,752 / 32,512 bytes**, 2,760 bytes free.
+- Loader: **7,273 bytes**. Development package: **610,429 bytes** (the package
+  includes the loader and packaging data; its size is not the app XIP budget).
+- Factory instrument data removed: PIANO/FLUTE/SAX and their aliases. Their
+  existing preset/set IDs stay reserved, preserving USR1–3 numbering. They use
+  the existing no-sample fallback; phone audio and user uploads remain available.
+- Built-in SLICE BREAK/FUNK ADPCM remains: **37,376 bytes**.
+
+The dedicated **CAFA v5 companion** workflow runs on `cafa/**` pushes and
+archives development binaries, licences, logs, checksums and source provenance.
+It neither releases nor flashes firmware. Hardware sound, USB latency, recovery
+and stack high-water checks remain unqualified.
+
+### Remaining CPU gate failures
+
+The unchanged `tests/target_budget.txt` gate does **not** pass this companion
+configuration. It reports audio ISR `fm1_alnk0_irq` cost 1,399 against 1,266
+(+11%) and `strum_tick` 155 against 139 (+12%), with a +10% allowed threshold.
+These are static loop-instruction estimates, not measured hardware cycles.
+No budget was increased. The companion CI preserves the failures and still runs
+the independent protocol/USB checks. A fitting package is not a fully qualified
+firmware release.
+
+## Historical factory-samples-on source baseline
 
 Source: `f8c5bab0dc6c5c541332dcd3dc091092511cb007`, before v5 changes.
 
 - Default standalone build succeeds: application 579,076 bytes; data+BSS
   88,760/94,208 bytes; pool 351,128/360,448; RAM code+ramx 29,408/32,512.
-- The documented CAFA v4 flags `FELUCCA_CAFA=1 FELUCCA_UAC_OUT=1
+- The CAFA v4 flags `FELUCCA_CAFA=1 FELUCCA_UAC_OUT=1
   FELUCCA_CDC=0 FELUCCA_ENGINE_BALANCE=1` **fail the real target link**:
   XIP overflows by **1,868 bytes**. The source branch is already over budget.
 - The same v4 build with `FELUCCA_ENGINE_BALANCE=0` still overflows by
@@ -60,5 +99,5 @@ saved no space. ISR-reachable functions retain the existing optimization mode.
 - USB playback/clock-drift tests and **64 stock USB descriptor variants** pass.
 
 Hardware sound, latency, disconnect timing and stack high-water measurement
-remain untested. Existing source-branch overflow means feasibility cannot be
-claimed from the fixed-size protocol design alone; the real link must fit.
+remain untested. The sample-light configuration above passes the real link; the factory-samples-on
+configuration remains over budget. Neither result is hardware qualification.
