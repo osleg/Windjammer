@@ -44,7 +44,7 @@ If the device cannot boot to USB, see the [FM-1-transporter recovery project](ht
 
 ## Workflows and releases
 
-Pushes to `main` and pull requests run the controller build and checks. A version tag such as `v0.1.0` runs the same gates before publishing a firmware prerelease with checksums and licenses. The tag identifies the corresponding source and appears on the controller’s ABOUT page. Plain builds stage artifacts for download in the workflow run.
+Pushes to `main` and pull requests run the controller build and checks. A version tag such as `v0.9.0` runs the same gates before publishing a firmware release with checksums and licenses. The tag identifies the corresponding source and appears on the controller’s ABOUT page. Plain builds stage artifacts for download in the workflow run.
 
 ## Upstream development tools
 

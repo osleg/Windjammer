@@ -30,7 +30,7 @@ The [open companion protocol](docs/OPEN_PROTOCOL.md) uses negotiated wire-6 USB 
 
 ## Build and release
 
-GitHub Actions builds the controller profile and checks the image, audio, native UI, protocol, and USB behavior. Successful tag builds publish a firmware prerelease with checksums, license notices, and the corresponding source revision. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
+GitHub Actions builds the controller profile and checks the image, audio, native UI, protocol, and USB behavior. Successful tag builds publish a firmware release with checksums, license notices, and the corresponding source revision. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
 
 ## License and credits
 

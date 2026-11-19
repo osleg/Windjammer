@@ -87,7 +87,7 @@ jobs:
       - name: Verify release checksums
         working-directory: ${{ runner.temp }}/windjammer-release/
         run: sha256sum --check --strict SHA256SUMS
-      - name: Publish firmware prerelease
+      - name: Publish firmware release
         working-directory: ${{ runner.temp }}/windjammer-release/
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,11 +95,11 @@ jobs:
         run: |
           {
             printf 'Windjammer controller firmware for the M-VAVE FM-1. A compatible companion app is required.\n\n'
-            printf 'The firmware reports device identity `FM-1_700`. This prerelease passed automated firmware checks. Physical-device acceptance is pending.\n\n'
+            printf 'The firmware reports device identity `FM-1_700`. This release passed automated firmware checks. Physical-device acceptance is pending.\n\n'
             printf 'The release includes SHA-256 checksums and a license archive.\n\n'
             printf 'Corresponding source: [%s](%s).\n' \
               "$GITHUB_SHA" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
           } > "$RUNNER_TEMP/windjammer-release-notes.md"
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Windjammer $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/windjammer-release-notes.md" \
             ./*.fwsc SHA256SUMS ./*-licenses.zip
