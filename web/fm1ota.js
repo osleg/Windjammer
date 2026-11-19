@@ -235,14 +235,14 @@ export class Updater {
   }
 
   // full install: running firmware -> loader -> new firmware
-  async install(image, product, onStep) {
+  async install(image, product, onStep, selected) {
     const step = onStep || (() => {});
     const [model] = product.split("_");   // the package's model first: an FM-1 and an SMK can share a computer
-    const dev = await this.find((id) => !IS_OTA(id) && sameModel(id.model, model)) || await this.find((id) => !IS_OTA(id));
+    const dev = selected || await this.find((id) => !IS_OTA(id) && sameModel(id.model, model)) || await this.find((id) => !IS_OTA(id));
     if (!dev) throw fail("notfound", "FM-1 or SMK-37 not found (USB cable, and no other app using it?)");
-    if (!sameModel(dev.id.model, model)) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
+    if (IS_OTA(dev.id) || !sameModel(dev.id.model, model)) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
     step("start", dev.id.text);
-    dev.link.send(UPGRADE);
+    if (!dev.link.send(UPGRADE)) { dev.link.close(); throw fail("lost", "the USB connection was lost before starting"); }
     await sleep(2000);
     const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n) => step("verify", n));
     dev.link.close();
@@ -298,11 +298,11 @@ export class Updater {
   // resume: the device is already in update mode (loader) -> true when the write finished. product: the
   // package's identity; the loader's model must be exactly the package's (sameModel, as install()): an SMK's
   // loader never gets an FM-1 image nor another model's, and without the identity nothing is written
-  async resume(image, onStep, product = "") {
+  async resume(image, onStep, product = "", selected) {
     const model = (product || "").split("_")[0];
-    const ota = await this.find(IS_OTA);
+    const ota = selected || await this.find(IS_OTA);
     if (!ota) return false;
-    if (!product || !sameModel(ota.id.model, model)) {
+    if (!product || !IS_OTA(ota.id) || !sameModel(ota.id.model, model)) {
       ota.link.close();
       throw fail("model", `the device is in the update mode of ${ota.id.text}, the package is for ${product || "an unknown model"}`, ota.id.text);
     }

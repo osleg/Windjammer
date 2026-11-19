@@ -4,7 +4,7 @@ Windjammer gives the M-VAVE FM-1 a native hardware interface for music apps. Pla
 
 ## Play
 
-1. Get the FM-1 controller package and checksums from [Releases](https://github.com/Osleg/Windjammer/releases). Follow the [installation guide](BUILDING.md#install) to verify and flash it.
+1. Open the [Windjammer web installer](https://osleg.github.io/Windjammer/webapp/installer/) in desktop Chrome or Edge. Connect your powered FM-1 to the computer and allow MIDI access when prompted. The installer offers the latest Windjammer release. See the [installation guide](BUILDING.md#install) for backups, manual downloads and recovery.
 2. Connect the powered FM-1 to Android with a USB data cable. Open a compatible version of **FM-1 Instrument** or **LOOM**, then select the FM-1’s MIDI endpoint. Android app development lives in the [LOOM repository](https://github.com/Osleg/loom-groovebox).
 3. Choose where the audio plays. **FM-1 Instrument’s direct USB mode** sends the synth to the FM-1 and uses its MASTER knob. The app can also play through the phone. Other integrations advertise the audio routes they support.
 
@@ -30,7 +30,7 @@ The [open companion protocol](docs/OPEN_PROTOCOL.md) uses negotiated wire-6 USB 
 
 ## Build and release
 
-GitHub Actions builds the controller profile and checks the image, audio, native UI, protocol, and USB behavior. Successful tag builds publish a firmware release with checksums, license notices, and the corresponding source revision. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
+GitHub Actions builds the controller profile and checks the image, audio, native UI, protocol, and USB behavior. Successful tag builds publish a firmware release with checksums, license notices, and the corresponding source revision. The [web tools](https://osleg.github.io/Windjammer/) update from the published release. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
 
 ## License and credits
 

@@ -21,6 +21,14 @@ The build produces the installable firmware at `build/felucca.fwsc`. The control
 
 ## Install
 
+### Browser
+
+Back up music and settings using tools supported by your current firmware. Connect the powered FM-1 directly to your computer with a USB data cable. Open the [Windjammer web installer](https://osleg.github.io/Windjammer/webapp/installer/) in desktop Chrome or Edge, allow MIDI access, and follow the install prompts. Keep the FM-1 powered and connected until its restart is confirmed. Hold HOME and open ABOUT to check the installed version.
+
+GitHub Pages serves the verified package from the latest regular [Windjammer release](https://github.com/Osleg/Windjammer/releases/latest). The installer checks the package against its published checksum and uses the FM-1 identity to check device compatibility.
+
+### Command line
+
 1. Download the Windjammer `.fwsc` file and `SHA256SUMS` from [Releases](https://github.com/Osleg/Windjammer/releases). Compare the package hash with the listed value.
 2. Back up any projects, samples, or settings you want to keep using your current firmware’s tools.
 3. Connect the powered FM-1 directly with a USB data cable. On Windows, run the installer with Windows Python so it can open the MIDI port.
@@ -44,7 +52,7 @@ If the device cannot boot to USB, see the [FM-1-transporter recovery project](ht
 
 ## Workflows and releases
 
-Pushes to `main` and pull requests run the controller build and checks. A version tag such as `v0.9.0` runs the same gates before publishing a firmware release with checksums and licenses. The tag identifies the corresponding source and appears on the controller’s ABOUT page. Plain builds stage artifacts for download in the workflow run.
+Pushes to `main` and pull requests run the controller build and checks. A version tag such as `v0.9.0` runs the same gates before publishing a firmware release with checksums and licenses. The tag identifies the corresponding source and appears on the controller’s ABOUT page. Plain builds stage artifacts for download in the workflow run. The Pages workflow updates the web installer after a successful tagged firmware release.
 
 ## Upstream development tools
 

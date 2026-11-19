@@ -3,6 +3,7 @@
 //
 // Node checks of the web pages' JS (no browser, no hardware). Run from the repo root:
 //   node web/test_web.mjs
+//   node web/test_web.mjs --site OUT_DIR   (generated release installer with simulated Web MIDI)
 // - editor.html: the protocol section (between PROTO-BEGIN/END) against its mock device (v1 commands,
 //   the user preset bank / librarian, library files, live pushes, older-firmware fallback, the v3 tracks
 //   and the mixer, the v5 drum grid in steps and user presets), its tab layout and ja/en strings,
@@ -14,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { logicalImage, productOf, flashSpan, validateStockPackage } from "./fm1pkg.js";
 import { Updater, pack7, unpack7, WriteMeter, packageFor, needsStockUpdate, stockRefusal } from "./fm1ota.js";
@@ -22,7 +24,7 @@ let failed = 0;
 const ok = (cond, what) => { console.log(`${what.padEnd(64)} ${cond ? "ok" : "FAIL"}`); if (!cond) failed++; };
 const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const py = (code, ...args) => execFileSync("python3", ["-c", code, ...args], { maxBuffer: 1 << 26 });
-const HERE = new URL(".", import.meta.url).pathname;
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 /* what lives outside web/, each overridable (a web-only checkout passes them, or the checks skip):
    FELUCCA_DESC  the firmware's parameter / protocol table (tests/descdump.c -> build/host/desc.json)
    FELUCCA_TOOLS the firmware's tools (tools/fm1_sample_upload.py, the sample format's reference; tools/gen_ui_palettes.py, the themes' colours)
@@ -2044,7 +2046,7 @@ class FakeFM1 {
         setTimeout(() => this.boot("ota-" + this.back[0], "Felucca Update"), 200);
         return;
       }
-      if (addr === 0xE0000000) setTimeout(() => this.boot("ota-FM-1_900", this.loaderName), 300);
+      if (addr === 0xE0000000) setTimeout(() => this.boot(`ota-${this.back[0]}`, this.loaderName), 300);
       else if (addr === 0xF0000000) setTimeout(() => this.boot(...this.back), 300);
       else this.next();
     }
@@ -2199,35 +2201,96 @@ async function updater() {
     "installer: (2.0.3, #64) an SMK-37 whose start-up part is not V016's is told so (nothing written), not to replug");
 }
 
-await editorMock();
-await editorSamplePresets();
-mockTables();
-await editorLibrarian();
-await editorGrid();
-await editorRatchet();
-await editorStepExtras();
-await editorStepTies();
-await editorKit();
-await editorTransportNames();
-await editorLists();
-await editorSong2();
-await editorLocks();
-await editorLight();
-await editorLive();
-await preferenceReplies();
-await editorTracks();
-await editorMixer();
-await editorTrackParam();
-await editorSong();
-await editorSessions();
-await editorFm6();
-fm6TabNoBank();
-await editorFm4();
-editorTabs();
-editorIcons();
-learnPage();
-samplesMatch();
-await packages();
-await updater();
+async function releaseInstaller(site) {
+  const projectPath = "/Windjammer/";
+  const installerURL = new URL(`${projectPath}webapp/installer/`, "https://osleg.github.io");
+  const page = readFileSync(join(site, "webapp/installer/index.html"), "utf8");
+  const script = page.match(/<script type="module">([\s\S]+?)<\/script>/)[1];
+  const downloadURL = new URL(page.match(/href="([^"]+)" download/)[1], installerURL);
+  const asset = (url) => {
+    if (url.origin !== installerURL.origin || !url.pathname.startsWith(projectPath)) throw new Error(`Not a site asset: ${url}`);
+    return readFileSync(join(site, url.pathname.slice(projectPath.length)));
+  };
+  const raw = asset(downloadURL);
+  const image = Buffer.concat([...Array.from({ length: 20 }, (_, i) => raw.subarray(i * 48, i * 48 + 47)), raw.subarray(960)]);
+  async function openPage(access, corrupt = false) {
+    const elements = new Map([...page.matchAll(/id="([^"]+)"/g)].map(([, id]) => [
+      id, { disabled: true, value: 0, textContent: "", addEventListener: (event, handler) => { if (event === "click") click = handler; } }
+    ]));
+    let click, fetched;
+    vm.runInNewContext(script, {
+      crypto, TextEncoder, setTimeout, clearTimeout,
+      navigator: { requestMIDIAccess: async ({ sysex }) => {
+        if (!sysex) throw new Error("Install needs SysEx");
+        return access;
+      } },
+      document: { getElementById: (id) => elements.get(id) },
+      window: { addEventListener: () => {} },
+      fetch: async (url) => {
+        fetched = new URL(url, installerURL);
+        const data = Uint8Array.from(corrupt ? Buffer.concat([asset(fetched), Buffer.from([0])]) : asset(fetched));
+        return { ok: true, arrayBuffer: async () => data.buffer };
+      },
+    });
+    await click();
+    return { fetched, status: elements.get("status").textContent, progress: elements.get("bar").value };
+  }
+  const running = new FakeFM1(image, { back: ["FM-1_700", "Felucca"] });
+  running.boot("FM-1_700", "Felucca");
+  const otherModel = new FakeFM1(image);
+  otherModel.boot("SMK-37 Pro_016", "SMK-37 Pro");
+  const access = {
+    get inputs() { return new Map([...otherModel.access.inputs, ...running.access.inputs]); },
+    get outputs() { return new Map([...otherModel.access.outputs, ...running.access.outputs]); },
+  };
+  const bad = await openPage(access, true);
+  ok(/verification failed/i.test(bad.status) && running.served === 0 && otherModel.served === 0,
+    "release installer: modified package with unchanged identity serves no firmware");
+  const good = await openPage(access);
+  ok(good.fetched.href === downloadURL.href && /installation complete/i.test(good.status) && good.progress === 100
+     && running.served > 0 && running.bad === 0 && otherModel.served === 0,
+    "release installer: downloads the release, updates FM-1_700 and checks the reboot");
+
+  const loader = new FakeFM1(image, { back: ["FM-1_699", "Felucca"] });
+  loader.boot("ota-FM-1_700", "Felucca Update");
+  const wrong = await openPage(loader.access);
+  ok(/unexpected identity/i.test(wrong.status) && wrong.progress < 100 && loader.served > 0 && loader.bad === 0,
+    "release installer: loader resume cannot report success on an unexpected reboot identity");
+}
+
+if (process.argv[2] === "--site") {
+  await releaseInstaller(process.argv[3]);
+} else {
+  await editorMock();
+  await editorSamplePresets();
+  mockTables();
+  await editorLibrarian();
+  await editorGrid();
+  await editorRatchet();
+  await editorStepExtras();
+  await editorStepTies();
+  await editorKit();
+  await editorTransportNames();
+  await editorLists();
+  await editorSong2();
+  await editorLocks();
+  await editorLight();
+  await editorLive();
+  await preferenceReplies();
+  await editorTracks();
+  await editorMixer();
+  await editorTrackParam();
+  await editorSong();
+  await editorSessions();
+  await editorFm6();
+  fm6TabNoBank();
+  await editorFm4();
+  editorTabs();
+  editorIcons();
+  learnPage();
+  samplesMatch();
+  await packages();
+  await updater();
+}
 console.log(failed ? `WEB TESTS FAILED (${failed})` : "web tests passed");
 process.exit(failed ? 1 : 0);
