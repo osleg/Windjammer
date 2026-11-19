@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Android companion and LOOM
+  - name: FM-1 Instrument
+    url: https://github.com/Osleg/FM-1-Instrument/issues
+    about: Report issues in the FM-1 Instrument Android app here.
+  - name: LOOM fork
     url: https://github.com/Osleg/loom-groovebox/issues
-    about: Report issues in the Android applications here.
+    about: Report issues in the LOOM Android app here.

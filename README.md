@@ -5,7 +5,7 @@ Windjammer gives the M-VAVE FM-1 a native hardware interface for music apps. Pla
 ## Play
 
 1. Open the [Windjammer web installer](https://osleg.github.io/Windjammer/webapp/installer/) in desktop Chrome or Edge. Connect your powered FM-1 to the computer and allow MIDI access when prompted. The installer offers the latest Windjammer release. See the [installation guide](BUILDING.md#install) for backups, manual downloads and recovery.
-2. Connect the powered FM-1 to Android with a USB data cable. Open a compatible version of **FM-1 Instrument** or **LOOM**, then select the FM-1’s MIDI endpoint. Android app development lives in the [LOOM repository](https://github.com/Osleg/loom-groovebox).
+2. Connect the powered FM-1 to Android with a USB data cable. Open [FM-1 Instrument](https://github.com/Osleg/FM-1-Instrument/releases/latest) or the [LOOM fork](https://github.com/Osleg/loom-groovebox/releases/latest), then select the FM-1’s MIDI endpoint.
 3. Choose where the audio plays. **FM-1 Instrument’s direct USB mode** sends the synth to the FM-1 and uses its MASTER knob. The app can also play through the phone. Other integrations advertise the audio routes they support.
 
 The FM-1 waits for a compatible app when it starts up. Hold HOME to open device settings while disconnected. After connecting, supported workflows include sound selection, note and drum editing, modulation, effects, and project save and reload. The app determines which features its engines and project model expose.
