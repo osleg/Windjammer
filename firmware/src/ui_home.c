@@ -78,11 +78,18 @@ static void graph_tracks(void)
         uint32_t abs_track = remote ? first_track+k : k;
         uint32_t first, play, flags=0u;
 #if FELUCCA_CAFA
-        if(remote) {r=cafa_nv_row(k);if(r)flags=r[40];}
+        if (remote) {
+            r = cafa_nv_row(k);
+            if (r) flags = r[40];
+            first = r ? cafa_native_u14(r + 41) : 0u;
+            play = r ? cafa_native_u14(r + 43) : 16383u;
+            n = 16u;
+        } else
 #endif
-        first=remote?(r?cafa_native_u14(r+41):0u):hl_bar(t,&n);
-        play=remote?(r?cafa_native_u14(r+43):16383u):t->seq_idx;
-        if(remote)n=16u;
+        {
+            first = hl_bar(t, &n);
+            play = t->seq_idx;
+        }
         int sel = abs_track == selected, muted = remote?(flags&4u)!=0u:t->p[P_MUTE] != 0, big = sel || !six;
         int32_t h = big ? HL_H : HL_C_H, ch = big ? HL_CELL_H : HL_C_CELL_H, b[4];
         int ib = sel && !ux.quark;                    /* (the selected lane a band, INK on it; (Skiff Q3) QUARK: a beam,

@@ -256,12 +256,15 @@ static void draw_head_blocks(void)
             GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
             x = cv_text_r(x, HEAD_SY, &AF_S, mk, T_TRK(selected % UI_NTRK), T_BG) - 8;
         }
+#if FELUCCA_CAFA
         if (chrome) {
             char oct[9];
             cafa_native_text(oct, chrome + 3u, 8u);
             if (oct[0] && x - text_w(&AF_S, oct) >= lx + 8)
                 cv_text_r(x, HEAD_SY, &AF_S, oct, T_THEME, T_BG);
-        } else if (octave)
+        } else
+#endif
+        if (octave)
             head_group(x, lx + 8);                     /* (#70) stay clear of the BPM */
     }
     if (s_n) {                                        /* ((2.5, the user's 2B) a song playing: the strip, where it is; */
