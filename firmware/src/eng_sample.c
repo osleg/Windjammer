@@ -324,8 +324,8 @@ static const engine_t ENG_SAMPLE = {
     },
     .presets = SMP_PRESET_TABLE,
     .npresets = SMP_NPRESETS,
-    .note_on = sample_note_on,
-    .render = sample_render,
+    .note_on = ENG_AUDIO_CALLBACK(sample_note_on),
+    .render = ENG_AUDIO_CALLBACK(sample_render),
     .knob = {P_E0, P_E4, P_ATK, P_REL},
     .sampled = 1,
 };

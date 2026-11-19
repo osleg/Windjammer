@@ -86,15 +86,15 @@ stock. Credits: [LICENSING.md](LICENSING.md).
 ## Build
 
 ```sh
-BOARD=smk37 ./build.sh                  # build/skiff-smk37.fwsc        SMK-37 Pro_700
-BOARD=smk37 MODEL=elite ./build.sh      # build/skiff-smk37-elite.fwsc  SMK-37 Elite_700
-BOARD=smk37 MODEL=mke ./build.sh        # build/skiff-smk37-mke.fwsc    MKE-P37_700
+BOARD=smk37 ./build.sh                  # build/windjammer-smk37.fwsc        SMK-37 Pro_700
+BOARD=smk37 MODEL=elite ./build.sh      # build/windjammer-smk37-elite.fwsc  SMK-37 Elite_700
+BOARD=smk37 MODEL=mke ./build.sh        # build/windjammer-smk37-mke.fwsc    MKE-P37_700
 ./build.sh                              # the FM-1 last: the tests read its binaries
 sh tests/run_tests.sh
 ```
 
 Everything SMK sits behind `BOARD_SMK37` (default 0). The FM-1 app, package and loader stay byte-identical. Release
-builds take `--release X.Y` as on the FM-1: identity `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`.
+builds take `--release X.Y` as on the FM-1: identity `SMK-37 Pro_7XY`, `windjammer-smk37-X.Y.fwsc`.
 
 Sizes (Pro, 2.0 dev with the controls, the pedal hold and the app's own copy of the loader): app 571,388 B of the SMK's
 619,520 B slot (about 47 KB to spare); RAM .data+.bss 83,668 of 98,304 B; pool 347,088 of 356,352 B; the update
@@ -276,7 +276,7 @@ Left for the unit, because the host can't show them:
 ## Bring-up, with the keyboard
 
 1. A full flash backup, verified, before anything (the kit's recovery notes). Then install with
-   `tools/fm1_install.py build/skiff-smk37.fwsc` (the Pro; `-elite` / `-mke` for those models).
+   `tools/fm1_install.py build/windjammer-smk37.fwsc` (the Pro; `-elite` / `-mke` for those models).
 2. Turn on MENU > USB SERIAL, restart, open the console (a build without `--release`: a release has none).
 3. Check, in order: `smk` (adc_ok rising, adc_miss near 0; buttons and knobs one step a detent; pads idle at their
    base; faders 0..127; wheels move), `padtest` (the bottom row's first four: red, green, blue, white), every key

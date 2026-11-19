@@ -466,9 +466,9 @@ static const engine_t ENG_GRAIN = {
     },
     .presets = GRAIN_PRESETS,
     .npresets = NELEM(GRAIN_PRESETS),
-    .note_on = grain_note_on,
-    .render = grain_render,
+    .note_on = ENG_AUDIO_CALLBACK(grain_note_on),
+    .render = ENG_AUDIO_CALLBACK(grain_render),
     .knob = {P_E1, P_E2, P_E3, P_E5},
     .poly = GR_POLY,
-    .block = grain_block,
+    .block = ENG_AUDIO_CALLBACK(grain_block),
 };

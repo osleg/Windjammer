@@ -1,5 +1,7 @@
 # Original CAFA prototype verification, 2026-11-13
 
+Historical development notes from the upstream Skiff checkout. The [Windjammer build guide](../BUILDING.md) and [public protocol](OPEN_PROTOCOL.md) describe the maintained controller. Archived Android prototype commands apply to the original checkout.
+
 **Historical first-build report. Superseded by [r2 verification](CAFA_R2.md).** The first image omitted engine balance and contained the subsequently reproduced disconnect race. Its aggregate target-budget check used the standalone image, not the combined CAFA image. r2 enables balance, fixes transport, and passes budgets on its exact combined image.
 
 This records the initial prototype checks. The later hardware-reported disconnect

@@ -128,7 +128,7 @@ static struct {
     uint8_t light, crypt, neon;  /* (Skiff) THEME CRYPT, its own font and widgets (C2, C3); NEON, CRYPT's font and its
                                   * own widgets (design/mock_neon.py) */
     uint8_t quark;               /* (Skiff) THEME QUARK: Skiff's font, its own widgets (design/mock_quark.py) */
-    uint8_t skiff;               /* (2.5) THEME SKIFF: its scope the logo's sea (ui_graph.c sk_sea) */
+    uint8_t windjammer;           /* the default theme uses the sea scope (ui_graph.c) */
     uint32_t gen;                /* bumped by palette_set (the text ramps follow) */
 } ux;
 /* The look (Skiff, DESIGN.md: BLOCKS; U2: the only one, FLAT and LINE retired): SURF tiles with square corners on the
@@ -180,7 +180,7 @@ static void palette_set(uint32_t i)
     ux.crypt = i == UI_CRYPT_INDEX;
     ux.neon = i == UI_NEON_INDEX;
     ux.quark = i == UI_QUARK_INDEX;
-    ux.skiff = i == UI_SKIFF_INDEX;
+    ux.windjammer = i == UI_WINDJAMMER_INDEX;
     uf.f = UF_FACE[ux.crypt || ux.neon];         /* (CRYPT, NEON: the pixel faces) */
     uf.cap = UF_CAP[ux.crypt || ux.neon];
     ux.bg = p->bg; ux.surf = p->surf; ux.text = p->text; ux.theme = p->theme;
@@ -207,12 +207,12 @@ static void palette_set(uint32_t i)
 }
 
 /* settings store a tagged id, THEME's (Skiff, R1: UI_THEME_TAG + index); earlier ids are migrated: the eleven palettes
- * before THEME (UI_PAL_TAG + index) and Felucca's oldest twenty (below 20); a palette that is gone is SKIFF */
+ * before THEME (UI_PAL_TAG + index) and Felucca's oldest twenty (below 20); an unavailable palette maps to the default */
 static uint32_t palette_from_stored(uint32_t v)
 {
     if (v >= UI_THEME_TAG && v - UI_THEME_TAG < NPALETTES) return v - UI_THEME_TAG;
     if (v >= UI_PAL_TAG && v - UI_PAL_TAG < 11u) return UI_PALETTE_MIGRATE11[v - UI_PAL_TAG];
-    return v < 20u ? UI_PALETTE_MIGRATE20[v] : UI_SKIFF_INDEX;
+    return v < 20u ? UI_PALETTE_MIGRATE20[v] : UI_WINDJAMMER_INDEX;
 }
 static uint32_t palette_to_stored(uint32_t i) { return UI_THEME_TAG + i % NPALETTES; }
 static int palette_stored_ok(uint32_t v)

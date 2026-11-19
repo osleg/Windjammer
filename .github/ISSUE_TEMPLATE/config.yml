@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Felucca (the firmware Skiff is built on)
-    url: https://github.com/hugelton/Felucca
-    about: Felucca's own behaviour, on Felucca. Please report Skiff's here, not there.
+  - name: Android companion and LOOM
+    url: https://github.com/Osleg/loom-groovebox/issues
+    about: Report issues in the Android applications here.

@@ -219,8 +219,8 @@ static const engine_t ENG_ANALOG = {
     },
     .presets = ANALOG_PRESETS,
     .npresets = NELEM(ANALOG_PRESETS),
-    .note_on = analog_note_on,
-    .render = analog_render,
+    .note_on = ENG_AUDIO_CALLBACK(analog_note_on),
+    .render = ENG_AUDIO_CALLBACK(analog_render),
     .desc = analog_desc,
     .knob = {P_E4, P_E5, P_ATK, P_REL},
     .keep = 0x03,                /* the filter */

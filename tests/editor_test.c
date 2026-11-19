@@ -5,6 +5,9 @@
 static unsigned char host_samples[3][0x14000];
 #define SMP_USER_XIP(k) host_samples[k]
 #define FELUCCA_OTA 1
+#ifndef EDITOR_TEST_NO_MAIN
+#define FELUCCA_DIAG 1
+#endif
 #define FELUCCA_FLASH 0
 #define FELUCCA_VERSION "TEST"
 #ifndef FELUCCA_CDC
@@ -1574,7 +1577,7 @@ static int custom_colors(void)
          host_wire[6] == 0 && !CPAL_BYTE && !favorites.factory[14][8] && ui.force;
     bad += check("(#27) COLORS op 0: shown at once in its look (QUARK's widgets, the colours as sent), nothing stored", ok);
     ok = colors_req(3, 0, 0, 1) == 0 && tokens_builtin(0) && settings.palette == 0u;
-    bad += check("(#27) COLORS op 3: the preview dropped, SKIFF again", ok);
+    bad += check("(#27) COLORS op 3: the preview dropped, WINDJAMMER again", ok);
 
     ok = colors_req(1, UI_NEON_INDEX, CC, 99) == 3 && host_wire[6] == 3 && host_wire[7] == UI_NEON_INDEX && colors_are(CC) &&
          tokens_are(CC) && ux.neon && settings.palette == UI_NEON_INDEX && CPAL_BYTE == (3u | UI_NEON_INDEX << 2) &&
@@ -1633,8 +1636,8 @@ static int custom_colors(void)
     colors_req(1, UI_CRYPT_INDEX, CC, 99);
     ui_ph_line = 1;
     settings_reset();
-    ok = settings.palette == UI_SKIFF_INDEX && tokens_builtin(0) && cpal_stored() && !cpal_on() && !ui_ph_line;
-    bad += check("(#27) RESET SETTINGS: THEME SKIFF, the set kept (CUSTOM still listed), PLAYHEAD THEME", ok);
+    ok = settings.palette == UI_WINDJAMMER_INDEX && tokens_builtin(0) && cpal_stored() && !cpal_on() && !ui_ph_line;
+    bad += check("(#27) RESET SETTINGS: THEME WINDJAMMER, the set kept (CUSTOM still listed), PLAYHEAD THEME", ok);
 
     {   /* ((2.0) another firmware's settings: its bytes where the set lives are no set; settings_persist.c clears them) */
         static persist_t f;
@@ -1651,9 +1654,30 @@ static int custom_colors(void)
     return bad;
 }
 
+static int diagnostic_mailbox(void)
+{
+    static const uint8_t first[]={0xf0,0x7d,0x43,0x41,6,9,1,0,1,0,0xf7};
+    static const uint8_t tag[]={0xf0,0x7d,0x43,0x41,6,11,1,0,2,0,4,5,0,6,0,0,0xf7};
+    static const uint8_t view[]={0xf0,0x7d,0x43,0x41,6,10,1,0,6,0,0xf7};
+    const uint8_t *p;uint32_t n,i;int ok;
+    reset();sx_diag_transport=1;
+    for(i=0;i<sizeof first;i++)sysex_byte(first[i]);
+    for(i=0;i<sizeof tag;i++)sysex_byte(tag[i]);
+    for(i=0;i<sizeof view;i++)sysex_byte(view[i]);
+    ok=ota_frame_get(&p,&n) && n==sizeof first-2u && p[4]==9u;
+    ota_frame_done();
+    ok &= ota_frame_get(&p,&n) && n==sizeof tag-2u && p[4]==11u && p[9]==4u;
+    ota_frame_done();
+    ok &= ota_frame_get(&p,&n) && n==sizeof view-2u && p[4]==10u;
+    ota_frame_done();
+    ok &= !ota_frame_get(&p,&n);
+    sx_diag_transport=0;
+    return check("diagnostic tag and view retain order behind pending USB view",ok);
+}
+
 int main(void)
 {
-    int bad = preferences() + motion_locks() + wide_ids() + framing() + uart_recovery() + steps() + samples() + smp_mix() + song_protocol() + malformed_saves() +
+    int bad = preferences() + motion_locks() + wide_ids() + framing() + diagnostic_mailbox() + uart_recovery() + steps() + samples() + smp_mix() + song_protocol() + malformed_saves() +
               fm6_patches() + user_preset_roundtrip() + live_sync() + usb_burst() + menu_protocol() + drum_kit_retired() +
               light_tracks() + preset_more() + transport_names() + song_cmds() + song2_cmds() + custom_colors();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");

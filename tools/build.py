@@ -6,17 +6,17 @@
   tools/build.py [--release X.Y[-suffix]] [--board fm1|smk37] [--model pro|elite|mke]
 
 Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
-felucca.fwsc (package). A release build (--release X.Y) writes skiff-X.Y.fwsc and a folder
+felucca.fwsc (package). A release build (--release X.Y) writes windjammer-X.Y.fwsc and a folder
 release-X.Y/ with the package, the app, SHA256SUMS, the samples' attributions and the licence files; (Skiff 2.0) it
 leaves the serial console out (FELUCCA_CDC=0, a developer tool: FELUCCA_CDC=1 keeps it), so the unit is a plain audio
 + MIDI device (macOS 13-15 see its USB audio input) and MENU has no USB SERIAL.
 See BUILDING.md for the toolchain and the SDK.
 
-BOARD=smk37 (or --board smk37) builds Skiff for the M-VAVE SMK-37 Pro (after genkigenki's SMK-37 layer for Felucca):
+BOARD=smk37 (or --board smk37) builds the inherited SMK-37 target (after genkigenki's SMK-37 layer for Felucca):
 -DBOARD_SMK37=1 for the app and the loader, identity SMK-37 Pro_700 (release SMK-37 Pro_7XY), the SMK flash layout
-(fm1pkg_make.py), the package build/skiff-smk37.fwsc (skiff-smk37-X.Y.fwsc for a release). MODEL=elite / mke (or
+(fm1pkg_make.py), the package build/windjammer-smk37.fwsc (windjammer-smk37-X.Y.fwsc for a release). MODEL=elite / mke (or
 --model) with smk37: the same build under the SMK-37 Elite's or the MKE-P37's model name (identity, loader, update
-record; -DSMK_MODEL), so the stock updater still takes that unit's factory package: skiff-smk37-elite.fwsc, -mke.fwsc.
+record; -DSMK_MODEL), so the stock updater still takes that unit's factory package: windjammer-smk37-elite.fwsc, -mke.fwsc.
 The default stays the FM-1, whose build gets no new flag.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
@@ -67,7 +67,7 @@ BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --boa
 BOARD_PRODUCT = {"fm1": "FM-1_700", "smk37": "SMK-37 Pro_700"}   # a dev build's identity
 BOARD_PREFIX = {"fm1": "FM-1_7", "smk37": "SMK-37 Pro_7"}        # a release build's: prefix + X + Y
 BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}           # the FM-1 build gets no new flag (byte-identical)
-BOARD_STEM = {"fm1": "skiff", "smk37": "skiff-smk37"}            # a release package: STEM-X.Y.fwsc
+BOARD_STEM = {"fm1": "windjammer", "smk37": "windjammer-smk37"}            # a release package: STEM-X.Y.fwsc
 # smk37: the keyboard's model name (MODEL env or --model); one hardware, three names. pro adds no flag
 MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/felucca.c)
@@ -220,13 +220,15 @@ def build_app():
     flags = [*CFLAGS, *BOARD_DEFS[BOARD], "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT", "FELUCCA_CPU2", "FELUCCA_ENGINE_BALANCE", "FELUCCA_CAFA", "FELUCCA_UAC_OUT"):
+                 "FELUCCA_CDC_DEFAULT", "FELUCCA_CPU2", "FELUCCA_ENGINE_BALANCE", "FELUCCA_CAFA", "FELUCCA_UAC_OUT", "FELUCCA_CONTROLLER"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
     v = os.environ.get("FELUCCA_USB_LAYOUT")   # firmware/src/usb.c: how the USB composite presents itself (#67), 0..3
     if v in ("0", "1", "2", "3"):
         flags.append(f"-DFELUCCA_USB_LAYOUT={v}")
+    if os.environ.get("FELUCCA_CONTROLLER") == "1":
+        flags.append("-fdata-sections")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
@@ -255,7 +257,8 @@ def build_app():
             raise SystemExit("app.ld: the XIP LENGTH line was not found")
         ld = OUT / "app.ld"
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#x}"))
-    tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
+    tc("pi32v2/bin/ld", *(["--gc-sections"] if os.environ.get("FELUCCA_CONTROLLER") == "1" else []),
+       "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        *([OUT / "fm1_cpu1.o"] if CPU2 else []), OUT / "felucca.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
         (OUT / sect).unlink(missing_ok=True)
@@ -394,6 +397,10 @@ def main():
     PRODUCT = BOARD_PRODUCT[BOARD]
     stem = BOARD_STEM[BOARD]
     name = "felucca.fwsc" if BOARD == "fm1" else f"{stem}.fwsc"
+    if os.environ.get("FELUCCA_CONTROLLER") == "1" and not a.release:
+        VERSION = os.environ.get("WINDJAMMER_BUILD_VERSION", "dev")
+        if not re.fullmatch(r"dev|v[0-9][A-Za-z0-9._-]{0,14}", VERSION):
+            raise SystemExit("Windjammer tags must start with v and a digit, with at most 16 characters")
     if model != "pro":              # another model name: identity, loader and update record (fm1_cc.h SMK_MODEL)
         BOARD_DEFS[BOARD] = [*BOARD_DEFS[BOARD], f'-DSMK_MODEL="{MODELS[model]}"']
         PRODUCT = PRODUCT.replace(MODELS["pro"], MODELS[model])

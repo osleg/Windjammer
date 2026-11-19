@@ -7,14 +7,14 @@
 /* ------------------------------------------------------------ menu --- */
 /* (the rows, their values and names, usb_serial_apply: menu_items.c) */
 
-/* https://github.com/illuminus5/skiff, QR version 3, correction M, mask 3 (tools/gen_qr.py).
+/* https://github.com/Osleg/Windjammer, QR version 3, correction M, mask 2 (tools/gen_qr.py).
  * One row per word, leftmost module in bit 0; the constant matrix needs no encoder or RAM. */
 static const uint32_t ABOUT_QR[29] = {
-    0x1FD99B7Fu, 0x1056C141u, 0x175CFA5Du, 0x174A195Du, 0x17482A5Du, 0x104D4641u,
-    0x1FD5557Fu, 0x0007F100u, 0x1A4778EDu, 0x11DF1002u, 0x0CA25A6Bu, 0x116CE8ABu,
-    0x060A9F7Eu, 0x1C49BA8Du, 0x1C5E534Eu, 0x09FCAAB0u, 0x0B1C8B47u, 0x0E84B330u,
-    0x05D19951u, 0x05C68D8Cu, 0x07F7BD7Au, 0x1F117700u, 0x0B593D7Fu, 0x0B158341u,
-    0x0DF7C45Du, 0x13AFDB5Du, 0x14940F5Du, 0x0AB12C41u, 0x0878B97Fu,
+    0x1FDD987Fu, 0x10400441u, 0x17515F5Du, 0x174A055Du, 0x175CFF5Du, 0x1052E341u,
+    0x1FD5557Fu, 0x00083F00u, 0x07D7DE7Du, 0x11DF03A9u, 0x011392EBu, 0x0A19C92Cu,
+    0x0608906Du, 0x11F16736u, 0x0733F54Du, 0x09F9AD26u, 0x06AA56F8u, 0x15EF0CB9u,
+    0x05D585F5u, 0x0871C58Du, 0x1DFA16F1u, 0x1F176300u, 0x075BEA7Fu, 0x111CB541u,
+    0x0DF2CF5Du, 0x1E1D1B5Du, 0x0FF8F95Du, 0x0AB40A41u, 0x05CA477Fu,
 };
 
 static void draw_about_qr(int32_t x, int32_t y)
@@ -131,8 +131,14 @@ static int32_t menu_document(int32_t y, int draw)
 {
     uint32_t i;
     if (draw) {
-        cv_text(6, y + 2, &AF_L, "SKIFF", T_THEME);
-        cv_text(6, y + 38, &AF_S, "Groovebox on Felucca", T_TEXT);
+        cv_text(6, y + 2, &AF_L, "WINDJAMMER", T_THEME);
+        cv_text(6, y + 38, &AF_S,
+#if FELUCCA_CONTROLLER
+                "Controller firmware",
+#else
+                "Groovebox firmware",
+#endif
+                T_TEXT);
         cv_text(6, y + 58, &AF_M, FELUCCA_VERSION, T_THEME);
         cv_text_r(232, y + 61, &AF_S, __DATE__, T_MID, T_BG);
         {   /* (Skiff) the core clock now, from the PLL (hal/fm1_clk.h; MENU > SYSTEM > CPU CLOCK) */
@@ -142,12 +148,12 @@ static int32_t menu_document(int32_t y, int draw)
             str_cpy(c + str_len(c), " MHZ", sizeof c - str_len(c));
             cv_text_r(232, y + 82, &AF_S, c, T_MID, T_BG);
         }
-        cv_text(6, y + 82, &AF_S, "Skiff: illuminus5", T_TEXT);   /* (Skiff 1.0) its source (the QR), Felucca's */
+        cv_text(6, y + 82, &AF_S, "Skiff: illuminus5", T_TEXT);
         cv_text(6, y + 100, &AF_S, "Felucca (C) 2026", T_TEXT);      /* credit; GPL-3.0-only */
         cv_text(6, y + 118, &AF_S, "Leo Kuroshita, H\xFCgelton", T_TEXT);
         cv_text(6, y + 138, &AF_S, "GPL-3.0-only", T_TEXT);
-        cv_text(6, y + 160, &AF_S, "github.com/illuminus5", T_MID);
-        cv_text(6, y + 178, &AF_S, "/skiff", T_MID);
+        cv_text(6, y + 160, &AF_S, "github.com/Osleg", T_MID);
+        cv_text(6, y + 178, &AF_S, "/Windjammer", T_MID);
         draw_about_qr(158, y + 122);
     }
     y = menu_text("CREDITS", y + 216, T_THEME, draw) + 8;
@@ -165,7 +171,7 @@ static int32_t menu_document(int32_t y, int draw)
     y = menu_text("Fonts and icons: their licences travel with the source and the release files.", y, T_TEXT, draw);
     y = menu_text("NO WARRANTY", y, T_TEXT, draw);
     y = menu_text("Full notices in source:", y + 8, T_TEXT, draw);
-    y = menu_text("github.com/illuminus5/skiff", y, T_MID, draw);
+    y = menu_text("github.com/Osleg/Windjammer", y, T_MID, draw);
     return y + 4;
 }
 static int32_t menu_scroll_max(void)
@@ -175,6 +181,9 @@ static int32_t menu_scroll_max(void)
 }
 
 static void menu_dots(void);
+#if FELUCCA_CAFA
+static uint8_t cafa_menu_projected;
+#endif
 /* the menu's header (0..24): its icon and title, the REC mark, the way back (the tabs: HOME CLOSE before the dots) */
 static void menu_head(void)
 {
@@ -193,7 +202,10 @@ static void menu_head(void)
         int32_t x = 232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8) - 8 - kh_w(KC_HOME, "CLOSE");   /* (menu_dots' left) */
         GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
         cv_key_hint(x, HALF_UP(H_HEAD - KC_H), KC_HOME, "CLOSE", 1, T_BG);
-        draw_rec_mark(x - 20, T_BG);
+#if FELUCCA_CAFA
+        if (!cafa_menu_projected)
+#endif
+            draw_rec_mark(x - 20, T_BG);
         menu_dots();
     }
     cv_blit(0, Y_HEAD);
@@ -232,14 +244,33 @@ static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_S
 #define MR_VR 224                                      /* its value's right edge */
 #define MK_Y 224                                       /* the key hints */
 static int menu_large(void) { return (ui_prefs & PREF_LARGE) != 0u; }
-static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
+static uint32_t menu_tab(void)
+{
+#if FELUCCA_CAFA
+    if (cafa_menu_projected) return cafa_native_u14(cafa_native_profile_view + 9);
+#endif
+    return MI_TAB[ui.menu_sel % MI_COUNT];
+}
 /* the shown tab's rows: 24 px (LARGE 28, a tab of up to 5 rows), 2 px apart (a tab of 6: 1 px, its panel then ends
  * 6 px above the key hints as the others do; the rule between two rows is that gap row). (1.3) A tab of more shows
  * MTAB_ROWS of them from mr_top, so the cursor's row is the last shown once past them (MIDI's ten) */
-static uint32_t mr_n(void) { return mtab_rows(menu_tab()) < MTAB_ROWS ? mtab_rows(menu_tab()) : MTAB_ROWS; }
+static uint32_t mr_n(void)
+{
+#if FELUCCA_CAFA
+    if (cafa_menu_projected) {
+        uint32_t len;
+        const uint8_t *rows = cafa_nv_section(CAFA_NATIVE_ROWS, &len);
+        return rows && len && rows[0] < MTAB_ROWS ? rows[0] : rows && len ? MTAB_ROWS : 0u;
+    }
+#endif
+    return mtab_rows(menu_tab()) < MTAB_ROWS ? mtab_rows(menu_tab()) : MTAB_ROWS;
+}
 static uint32_t mr_top(void)
 {
-    uint32_t k = ui.menu_sel - mtab_first(menu_tab());
+#if FELUCCA_CAFA
+    if (cafa_menu_projected) return cafa_native_u14(cafa_native_profile_view + 26);
+#endif
+    uint32_t k = mtab_rank(ui.menu_sel);
     return k < MTAB_ROWS ? 0u : k + 1u - MTAB_ROWS;
 }
 static int32_t mr_h(void) { return menu_large() && mr_n() <= 5u ? 28 : 24; }
@@ -262,19 +293,25 @@ static const aafont_t *mt_font(void) { return menu_large() ? &AF_M : &AF_S; }
 /* the tabs at the place mt.pos, MT_GAP apart, centred: each one's share of the shown look (0 .. MT_ONE), x, width */
 static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
 {
-    uint32_t k;
+    uint32_t k, tabs=0;
     int32_t tot = 0, cum = 0;
     for (k = 0; k < MTAB_COUNT; k++) {
+        if (!mtab_rows(k)
+#if FELUCCA_CAFA
+            && !cafa_menu_projected
+#endif
+           ) { a[k]=w[k]=0; continue; }
+        tabs++;
         int32_t d = mt.pos - (int32_t)k * MT_ONE;
         a[k] = MT_ONE - (d < 0 ? -d : d);
         if (a[k] < 0) a[k] = 0;
         w[k] = MT_IW + (MT_NX - MT_IW + text_w(mt_font(), MTAB_NAME[k]) + 10) * a[k] / MT_ONE;
         tot += w[k];
     }
-    cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(MTAB_COUNT - 1u) * MT_GAP);   /* (the bar centred) */
+    cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(tabs - 1u) * MT_GAP);   /* (the bar centred) */
     for (k = 0; k < MTAB_COUNT; k++) {                 /* the same gap between every two, sliding too */
         x[k] = cum;
-        cum += w[k] + MT_GAP;
+        if (w[k]) cum += w[k] + MT_GAP;
     }
 }
 static void menu_tabs(void)                            /* (in screen rows: cv_oy set by the caller) */
@@ -283,6 +320,7 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
     uint32_t k;
     mt_layout(a, x, w);
     for (k = 0; k < MTAB_COUNT; k++) {
+        if (!w[k]) continue;
         int on = k == (uint32_t)((mt.pos + MT_ONE / 2) / MT_ONE);   /* (half way, the shown look moves over) */
         uint16_t bg = on ? T_ACCENT : T_SURF;
         if (on && ux.neon) {                           /* ((Skiff N3) NEON: lit pink into violet) */
@@ -308,17 +346,73 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
 /* the header's tab dots at the right, the shown tab's a THEME pill */
 static void menu_dots(void)
 {
-    uint32_t k, t = menu_tab();
-    int32_t x = 232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8);
+    uint32_t k, t = menu_tab(), tabs=0;
+    int32_t x;
+    for(k=0;k<MTAB_COUNT;k++)tabs+=mtab_rows(k)!=0u
+#if FELUCCA_CAFA
+        || cafa_menu_projected
+#endif
+        ;
+    x = 232 - (12 + (int32_t)(tabs - 1u) * 8);
     for (k = 0; k < MTAB_COUNT; k++) {
+        if (!mtab_rows(k)
+#if FELUCCA_CAFA
+            && !cafa_menu_projected
+#endif
+           ) continue;
         cv_rrect(x, H_HEAD / 2 - 2, k == t ? 12 : 4, 4, -2, k == t ? T_THEME : T_DIM, T_BG);
         x += (k == t ? 12 : 4) + 4;
     }
 }
 
 /* the tab's row k (menu_items.c row `row`) */
+#if FELUCCA_CAFA
+static void cafa_native_app_row(uint32_t k, uint32_t row)
+{
+    const uint8_t *r = cafa_nv_row(k);
+    char label[17], value[17], fitted[17];
+    uint32_t flags, current, max;
+    int32_t y = mr_y(k), h = mr_h(), x;
+    int selected, disabled, action;
+    uint16_t bg, fg, val;
+    if (!r) return;
+    cafa_native_text(label, r, 16);
+    cafa_native_text(value, r + 16, 16);
+    flags = r[40]; current = cafa_native_u14(r + 41); max = cafa_native_u14(r + 43);
+    selected = row == cafa_native_u14(cafa_native_profile_view + 24) || (flags & 1u) != 0u;
+    disabled = (flags & 16u) != 0u;
+    action = (flags & 32u) != 0u;
+    bg = selected ? T_THEME : T_SURF;
+    fg = disabled ? T_DIM : selected ? T_INK : T_TEXT;
+    val = disabled ? T_DIM : selected ? T_INK : T_THEME;
+    if (selected)
+        cv_rrect(MR_X, y, MR_W, h, ux.crypt ? 0 : 6, bg, T_SURF);
+    if (flags & 2u)
+        cv_rrect(MR_LX - 5, y + h / 2 - 2, 3, 4, 1, selected ? T_INK : T_ACCENT, bg);
+    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
+    cv_text_fit(MR_LX, y + (menu_large() ? CAP_IN(M, h) : CAP_IN(S, h)),
+                menu_large() ? &AF_M : &AF_S, label, fg, bg, 116);
+    if (action) {
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row chevron centred up/down");
+        cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, val, bg);
+    }
+    if (!value[0]) fmt_int(value, current);
+    x = action ? MR_VR - 18 : MR_VR;
+    text_fit(fitted, sizeof fitted, value, &AF_M, 88);
+    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row value centred up/down");
+    cv_text_r(x, y + CAP_IN(M, h), &AF_M, fitted, val, bg);
+    if (max && !action) {
+        uint32_t fill = current > max ? max : current;
+        cv_rect(156, y + h - 3, 68, 1, T_LINE);
+        if (fill) cv_rect(156, y + h - 3, (int32_t)(68u * fill / max), 1, val);
+    }
+}
+#endif
 static void menu_row(uint32_t k, uint32_t row)
 {
+#if FELUCCA_CAFA
+    if (cafa_menu_projected) { cafa_native_app_row(k, row); return; }
+#endif
     int32_t y = mr_y(k), h = mr_h(), large = menu_large(), x0;
     int32_t ny = y + (large ? CAP_IN(M, h) : CAP_IN(S, h)), vy = y + CAP_IN(M, h);
     int sel = row == ui.menu_sel;
@@ -462,7 +556,7 @@ static void draw_menu(void)
         cv_blit(0, H_HEAD + MENU_DOC_H);
         return;
     }
-    first = mtab_first(menu_tab()) + mr_top();
+    first = mr_top();
     n = mr_n();
     split = menu_split(n);
     for (pass = 0; pass < 2u; pass++) {
@@ -478,7 +572,7 @@ static void draw_menu(void)
             cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);   /* the rows' panel */
         for (k = 0; k < n; k++)
             if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
-                menu_row(k, first + k);
+                menu_row(k, mtab_nth(menu_tab(), first + k));
         if (mtab_rows(menu_tab()) > n) {              /* ((1.3) more rows than shown: where they are, at the right) */
             int32_t y0 = mr_y(0), hh = mr_y(n) - mr_gap() - y0, all = (int32_t)mtab_rows(menu_tab());
             cv_rect(233, y0, 2, hh, T_LINE);
@@ -502,11 +596,70 @@ static void enc_drop(void)                             /* knob turns nobody take
         panel_enc(k);
 }
 
+#if FELUCCA_CAFA
+/* The app owns screen 72. Its bounded ROWS section supplies this painter, while
+ * the existing menu keeps its tabs, bands, palette and key hints. No local menu
+ * cursor or settings are changed and input remains with the host. */
+static void cafa_native_app_menu_draw(void)
+{
+    static const khint_t VALUE_KEYS[3] = {{KC_ALGO, "TAB"}, {KC_PRESETS, "ROW"}, {KC_OCTPM, "VALUE"}};
+    static const khint_t ACTION_KEYS[3] = {{KC_ALGO, "TAB"}, {KC_PRESETS, "ROW"}, {KC_OCTUP, "OPEN"}};
+    __typeof__(ui) keep = ui;
+    uint32_t pass, k, first, n, split, total, selected;
+    const uint8_t *row;
+    cafa_menu_projected = 1;
+    ui.menu = 1;
+    first = mr_top(); n = mr_n();
+    total = cafa_native_u14(cafa_native_profile_view + 28);
+    selected = cafa_native_u14(cafa_native_profile_view + 24);
+    mt.pos = (int16_t)(menu_tab() * MT_ONE);
+    mt.frame = ui.frame;
+    menu_head();
+    split = menu_split(n);
+    for (pass = 0; pass < 2u; pass++) {
+        int32_t top_y = pass ? (int32_t)split : H_HEAD;
+        cv_begin(240, pass ? 240u - split : split - H_HEAD, T_BG);
+        cv_oy = -top_y;
+        if (!pass) menu_tabs();
+        if (ux.crypt) {
+            cr_stone(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, T_SURF);
+            cr_frame2(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, T_LINE);
+        } else
+            cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);
+        for (k = 0; k < n; k++)
+            if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
+                menu_row(k, first + k);
+        if (total > n) {
+            int32_t y0 = mr_y(0), hh = mr_y(n) - mr_gap() - y0;
+            cv_rect(233, y0, 2, hh, T_LINE);
+            cv_rect(233, y0 + hh * (int32_t)first / (int32_t)total, 2,
+                    hh * (int32_t)n / (int32_t)total, T_MID);
+        }
+        if (pass) {
+            row = selected >= first && selected - first < n ? cafa_nv_row(selected - first) : 0;
+            cv_key_row(8, 232, MK_Y, row && (row[40] & 32u) ? ACTION_KEYS : VALUE_KEYS, 3, 7u, T_BG);
+        }
+        cv_oy = 0;
+        cv_blit(0, (uint32_t)top_y);
+    }
+    cafa_menu_projected = 0;
+    ui = keep;
+}
+
+static struct {
+    uint32_t context, buttons;
+    uint16_t scroll;
+    uint8_t requested, active, menu, sel, rows[5], confirm;
+} cafa_device_menu;
+#endif
 static void menu_close(void)
 {
     settings_save();                                   /* palette / panel table, if changed */
     ui.menu = 0;
     ui.force = 1;
+#if FELUCCA_CAFA
+    if (cafa_device_menu.active) return;              /* no standalone page/model entry callbacks */
+#endif
     if (ui.home)                                       /* ((Skiff U3, N3) back where it was opened: was HOME always) */
         go_home();
     else
@@ -518,36 +671,35 @@ static void menu_close(void)
  * ABOUT (OCT- nothing there); OCT- in ABOUT goes back to the tabs. HOME closes it, from ABOUT too (ui_input.c) */
 static void menu_move(int32_t s)                       /* PRESETS: the next / previous row of the tab */
 {
-    uint32_t t = menu_tab(), f = mtab_first(t), n = mtab_rows(t), k = (ui.menu_sel - f + (s > 0 ? 1u : n - 1u)) % n;
-    ui.menu_sel = (uint8_t)(f + k);
+    uint32_t t = menu_tab(), n = mtab_rows(t), k = (mtab_rank(ui.menu_sel) + (s > 0 ? 1u : n - 1u)) % n;
+    ui.menu_sel = (uint8_t)mtab_nth(t, k);
     ui.menu_row[t] = (uint8_t)k;
 }
 static void menu_tab_go(int32_t s)                     /* ALGORITHM: the next / previous tab, at its last row */
 {
     uint32_t t = menu_tab(), k;
-    ui.menu_row[t] = (uint8_t)(ui.menu_sel - mtab_first(t));
-    t = (t + (s > 0 ? 1u : MTAB_COUNT - 1u)) % MTAB_COUNT;
+    ui.menu_row[t] = (uint8_t)mtab_rank(ui.menu_sel);
+    do { t = (t + (s > 0 ? 1u : MTAB_COUNT - 1u)) % MTAB_COUNT; } while (!mtab_rows(t));
     k = ui.menu_row[t] < mtab_rows(t) ? ui.menu_row[t] : 0u;
-    ui.menu_sel = (uint8_t)(mtab_first(t) + k);
+    ui.menu_sel = (uint8_t)mtab_nth(t, k);
 }
-static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
+static void menu_scan(uint32_t oct, const int32_t turns[NE])
 {
     int32_t s;
     uint32_t k, up = (oct >> 1) & 1u, dn = oct & 1u;
     if (ui.menu >= 2) {                                /* ABOUT: PRESETS scrolls (bounded), OCT- back to the tabs */
         if (dn)
             ui.menu = 1, ui.force = 1;
-        else if ((s = panel_enc(EN_PRESET)) != 0)
+        else if ((s = turns[EN_PRESET]) != 0)
             ui.menu_scroll = (uint16_t)clamp((int32_t)ui.menu_scroll + clamp(s, -128, 128) * 18, 0, menu_scroll_max());
-        enc_drop();
         return;
     }
-    if ((s = panel_enc(EN_PRESET)) != 0)
+    if ((s = turns[EN_PRESET]) != 0)
         menu_move(s);
-    if ((s = panel_enc(EN_ALGO)) != 0)
+    if ((s = turns[EN_ALGO]) != 0)
         menu_tab_go(s);
     for (s = 0, k = 0; k < 4u; k++)                    /* KNOB 1..4, any of them */
-        s += panel_enc(EN_K1 + k);
+        s += turns[EN_K1 + k];
     if (!menu_act(ui.menu_sel)) {
         /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette, STYLE is drawn so from the next
          * frame (FX LATCH: the latched effects are off while the menu is up) */
@@ -562,7 +714,10 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         } else if (ui.menu_sel == MI_RESET) {          /* ((Skiff U4, A3) its dialog, on the page under the MENU) */
             menu_close();
             confirm_open(CF_RESET_SET, 0);
-        } else if (ui.menu_sel == MI_LEARN) {          /* ((1.3) MIDI LEARN on, on the page under the MENU; on: done) */
+        } else if (ui.menu_sel == MI_LEARN) {
+#if FELUCCA_CAFA
+            if (cafa_device_menu.active) { ui_message("BIND IN THE APP"); return; }
+#endif          /* ((1.3) MIDI LEARN on, on the page under the MENU; on: done) */
             menu_close();
             if (ui.ml.on) {
                 ml_off();
@@ -577,5 +732,100 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
             ui.force = 1;
         }
     }
-    enc_drop();                                        /* swallow the rest while the menu is up */
 }
+
+static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
+{
+    int32_t turns[NE]; uint32_t k;
+    for (k = 0; k < NE; k++) turns[k] = panel_enc(k);
+    menu_scan(oct, turns);
+    enc_drop();
+}
+#if FELUCCA_CAFA
+/* Device preference editing uses the same native menu scanner and painters.
+ * Only its cursor state survives; local musical UI state is restored immediately. */
+static void cafa_device_menu_load(void)
+{
+    ui.menu = cafa_device_menu.menu; ui.menu_sel = cafa_device_menu.sel;
+    ui.menu_scroll = cafa_device_menu.scroll;
+    memcpy(ui.menu_row, cafa_device_menu.rows, sizeof cafa_device_menu.rows);
+    ui.confirm = cafa_device_menu.confirm; ui.layer = ui.lock = ui.shift = 0;
+    ui.force = 1;
+}
+static void cafa_device_menu_store(void)
+{
+    cafa_device_menu.menu = ui.menu; cafa_device_menu.sel = ui.menu_sel;
+    cafa_device_menu.scroll = ui.menu_scroll;
+    memcpy(cafa_device_menu.rows, ui.menu_row, sizeof cafa_device_menu.rows);
+    cafa_device_menu.confirm = ui.confirm;
+}
+static void cafa_native_device_reset(void)
+{
+    memset(&cafa_device_menu, 0, sizeof cafa_device_menu);
+}
+static void cafa_native_device_open_local(void)
+{
+    cafa_native_device_reset();
+    cafa_device_menu.active=cafa_device_menu.requested=1;
+    cafa_device_menu.menu=1;
+    cafa_device_menu.sel=(uint8_t)mtab_first(MTAB_DISPLAY);
+    cafa_device_menu.buttons=1u<<B_HOME; /* the opening hold cannot close it */
+}
+static void cafa_native_device_paint(void)
+{
+    __typeof__(ui) keep=ui;
+    cafa_device_menu_load();
+    if(ui.confirm==CF_RESET_SET)draw_confirm_blocks();
+    else draw_menu();
+    cafa_device_menu_store();ui=keep;
+}
+static void cafa_native_device_draw_local(void)
+{
+    cafa_native_device_paint();
+}
+static void cafa_native_device_draw(void)
+{
+    const uint8_t *v = cafa_native_profile_view;
+    uint32_t context = cafa_native_u14(v + 2) | (uint32_t)cafa_native_u14(v + 4) << 14;
+    uint32_t tab=v[6]>=57u && v[6]<=61u ? v[6]-57u : MTAB_SYSTEM;
+    if(v[6]>=57u && v[6]<=61u && !mtab_rows(tab)) {
+        cafa_native_device_reset();
+        lcd_fill(0,0,240,240,T_BG);
+        draw_text_box(8,95,224,&AF_M,"SET IN APP",T_THEME,0);
+        return;
+    }
+    if (!cafa_device_menu.requested || cafa_device_menu.context != context) {
+        cafa_device_menu.requested = cafa_device_menu.active = 1;
+        cafa_device_menu.context = context;
+        cafa_device_menu.menu = v[6] == 62u ? 2u : 1u;
+        cafa_device_menu.sel = (uint8_t)(v[6] == 70u ? MI_PANEL :
+                                         v[6] == 71u ? MI_RESET :
+                                         v[6] == 62u ? MI_ABOUT : mtab_first(tab));
+        cafa_device_menu.confirm = v[6] == 71u ? CF_RESET_SET : CF_NONE;
+        cafa_device_menu.buttons = 0;
+    }
+    cafa_native_device_paint();
+}
+static int cafa_native_device_input(uint32_t *buttons, uint32_t *keys, int32_t turns[7])
+{
+    uint32_t b = *buttons, old = cafa_device_menu.buttons, released = old & ~b;
+    uint32_t oct = ((released >> B_OCTDN) & 1u) | (((released >> B_OCTUP) & 1u) << 1);
+    uint32_t k; int result = 1;
+    __typeof__(ui) keep;
+    if (!cafa_device_menu.active) return 0;
+    keep = ui; cafa_device_menu_load();
+    if ((b & ~old) & (1u << B_HOME)) {
+        settings_save(); ui.menu = ui.confirm = 0;
+        cafa_device_menu.active = 0; result = 2;
+    } else if (ui.confirm == CF_RESET_SET) {
+        if (oct & 2u) { settings_reset(); settings_save(); ui.confirm = 0; ui.menu = 1; }
+        else if (oct & 1u) { ui.confirm = 0; ui.menu = 1; }
+    } else menu_scan(oct, turns);
+    cafa_device_menu_store(); cafa_device_menu.buttons = b;
+    ui = keep;
+    *buttons &= 1u << B_PLAY; *keys = 0;
+    for (k = 0; k < 7u; k++) turns[k] = 0;
+    if (result == 2) usb_serial_apply();
+    return result;
+}
+#endif

@@ -52,23 +52,47 @@ static uint32_t home_sig(void)
 #define HL_C_CELL_H 12
 static void graph_tracks(void)
 {
-    uint32_t k, i, n;
+    uint32_t k, i, n, remote=0u, shown=NTRK, first_track=0u, selected=0u;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        remote=1u;shown=cafa_nv_track_lanes();
+        first_track=cafa_native_u14(cafa_native_profile_view+26);
+        selected=cafa_native_u14(cafa_native_profile_view+24);
+    }
+#endif
+    if(!remote)selected=song.sel;
+    uint32_t playing=remote?0u:(uint32_t)song.playing, play_seed=remote?0u:TSEL->seq_idx;
+#if FELUCCA_CAFA
+    if(remote){playing=(cafa_native_profile_view[32]&1u)!=0u;
+        play_seed=cafa_native_u14(cafa_native_profile_view+22);}
+#endif
     int32_t tx = -1, ty = 0;                          /* (Skiff C3) CRYPT: the torch's place (the selected track's playhead) */
     int32_t qx = -1, qy = 0;                          /* (Skiff Q3) QUARK: the collision's (the same) */
-    int six = (int32_t)NTRK * (HL_H + 3) - 3 > (int32_t)graph_h();
-    int32_t y = six ? ((int32_t)graph_h() - (HL_H + ((int32_t)NTRK - 1) * (HL_C_H + 3))) / 2 : 0;
+    int six = (int32_t)shown * (HL_H + 3) - 3 > (int32_t)graph_h();
+    int32_t y = six ? ((int32_t)graph_h() - (HL_H + ((int32_t)shown - 1) * (HL_C_H + 3))) / 2 : 0;
     cv_rect(0, 0, 240, (int32_t)graph_h(), T_BG);      /* (over the panel: the lanes are its tiles) */
-    for (k = 0; k < NTRK; k++) {
-        const track_t *t = &trk[k];
-        const step_t *s = t->step;
-        uint32_t first = hl_bar(t, &n), play = t->seq_idx % 16u;
-        int sel = k == song.sel, muted = t->p[P_MUTE] != 0, big = sel || !six;
+    for (k = 0; k < shown; k++) {
+        const track_t *t = remote ? 0 : &trk[k];
+        const step_t *s = remote ? 0 : t->step;
+        const uint8_t *r = 0;
+        uint32_t abs_track = remote ? first_track+k : k;
+        uint32_t first, play, flags=0u;
+#if FELUCCA_CAFA
+        if(remote) {r=cafa_nv_row(k);if(r)flags=r[40];}
+#endif
+        first=remote?(r?cafa_native_u14(r+41):0u):hl_bar(t,&n);
+        play=remote?(r?cafa_native_u14(r+43):16383u):t->seq_idx;
+        if(remote)n=16u;
+        int sel = abs_track == selected, muted = remote?(flags&4u)!=0u:t->p[P_MUTE] != 0, big = sel || !six;
         int32_t h = big ? HL_H : HL_C_H, ch = big ? HL_CELL_H : HL_C_CELL_H, b[4];
         int ib = sel && !ux.quark;                    /* (the selected lane a band, INK on it; (Skiff Q3) QUARK: a beam,
                                                        * its colour faint, the colours as on the others) */
-        uint16_t col = muted ? T_DIM : T_TRK(k), lane = sel ? (ux.quark ? ux_mix(col, T_BG, 80) : col) : ux.quark ? T_BG : T_SURF;
+        uint16_t col = muted ? T_DIM : T_TRK(abs_track), lane = sel ? (ux.quark ? ux_mix(col, T_BG, 80) : col) : ux.quark ? T_BG : T_SURF;
         uint16_t ink = ib ? T_INK : T_TEXT, on = ib ? T_INK : col, off = ib ? ux_mix(col, T_INK, 55) : T_LINE;
-        char name[20], d[2] = {(char)('1' + k), 0};
+        char name[20], d[6];
+        char engine[9];
+        fmt_int(d,(int32_t)abs_track+1);
+        if(sel)play_seed=play;
         if (ux.crypt && !sel)                         /* (Skiff C3) CRYPT: the lanes stone */
             cr_stone(3, y, 234, h, lane);
         else if (ux.neon && sel) {                    /* (Skiff N3) NEON: the selected lane a neon sign (its colour into
@@ -84,66 +108,84 @@ static void graph_tracks(void)
             cv_rect(HL_STEP_X - 2, y + h / 2 - 3, 236 - HL_STEP_X + 2, 1, T_LINE);
             cv_rect(HL_STEP_X - 2, y + h / 2 + 3, 236 - HL_STEP_X + 2, 1, T_LINE);
         }
-        if (ux.neon && k + 1u < NTRK)
+        if (ux.neon && k + 1u < shown)
             for (i = 6; i < 234u; i += 10u)
                 cv_rect((int32_t)i, y + h + 1, 5, 1, ux_mix(NE_YELLOW, T_BG, 65));
-        text_ink(big ? &AF_V : &AF_M, d, b);             /* the number itself: the colour on SURF, INK on the band */
+        int large_num = big && abs_track < 9u;
+        const aafont_t *num_font = large_num ? &AF_V : &AF_M;
+        int32_t name_x = HL_NAME_X;
+        text_ink(num_font, d, b);                     /* the number itself: the colour on SURF, INK on the band */
+        int32_t mark_x = HL_NUM_X + (abs_track < 9u ? (big ? 14 : 10) : b[2] - b[0] + 2);
+        if (abs_track >= 9u && name_x < mark_x + 6)
+            name_x = mark_x + 6;
         GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "home lane number on its middle");
-        cv_text_on(HL_NUM_X - b[0], y + (big ? CAP_IN(V, HL_H) : CAP_IN(M, HL_C_H)), big ? &AF_V : &AF_M, d,
+        cv_text_on(HL_NUM_X - b[0], y + (large_num ? CAP_IN(V, h) : CAP_IN(M, h)), num_font, d,
                    ib ? T_INK : col, lane);
-        if (midi_mark(k))                             /* ((Skiff U4, F4) MIDI IN playing it: a mark after the number) */
-            cv_rect(HL_NUM_X + (big ? 14 : 10), y + h / 2 - 2, 4, 4, ib ? T_INK : T_THEME);
-        sound_name(t, name);
+        if (remote ? (flags&2u)!=0u : midi_mark(k))  /* ((Skiff U4, F4) MIDI IN playing it: a mark after the number) */
+            cv_rect(mark_x, y + h / 2 - 2, 4, 4, ib ? T_INK : T_THEME);
+        if(remote){
+#if FELUCCA_CAFA
+            if(r){cafa_native_text(name,r,16);cafa_native_text(engine,r+32,8);}
+            else name[0]=engine[0]=0;
+#endif
+        }else{sound_name(t,name);engine[0]=0;}
         if (big) {
-            cv_free_text(HL_NAME_X, y + HL_NAME_CY - AF_M_CAP_Y, &AF_M, name[0] ? name : "--", muted && !sel ? T_DIM : ink,
-                         lane, HL_STEP_X - 4 - HL_NAME_X);
-            cv_free_text(HL_NAME_X, y + HL_ENG_CY - AF_S_CAP_Y, &AF_S, ENGINES[t->eng_req % NENGINES]->name,
-                         ib ? T_INK : T_MID, lane, HL_STEP_X - 4 - HL_NAME_X);
+            cv_free_text(name_x, y + HL_NAME_CY - AF_M_CAP_Y, &AF_M, name[0] ? name : "--", muted && !sel ? T_DIM : ink,
+                         lane, HL_STEP_X - 4 - name_x);
+            cv_free_text(name_x, y + HL_ENG_CY - AF_S_CAP_Y, &AF_S, remote?engine:ENGINES[t->eng_req % NENGINES]->name,
+                         ib ? T_INK : T_MID, lane, HL_STEP_X - 4 - name_x);
         } else {
             GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "home compact lane name on its middle");
-            cv_free_text(HL_NAME_X, y + CAP_IN(S, HL_C_H), &AF_S, name[0] ? name : "--", muted ? T_DIM : T_TEXT, lane,
-                         HL_STEP_X - 4 - HL_NAME_X);
+            cv_free_text(name_x, y + CAP_IN(S, HL_C_H), &AF_S, name[0] ? name : "--", muted ? T_DIM : T_TEXT, lane,
+                         HL_STEP_X - 4 - name_x);
         }
         for (i = 0; i < n; i++) {                     /* (past the track's length: nothing) */
-            const step_t *st = &s[first + i];
+            const step_t *st = remote ? 0 : &s[first + i];
+            uint32_t cell_flags=0u, step_on_view, step_tie_view;
+#if FELUCCA_CAFA
+            if(remote){const uint8_t *cell=cafa_nv_cell(k*16u+i);if(cell)cell_flags=cell[2];
+                if(!cell || (cell_flags&64u))continue;}
+#endif
+            step_on_view=remote?(cell_flags&1u)!=0u:(step_on(st)||st->hit);
+            step_tie_view=remote?(cell_flags&2u)!=0u:step_tie(st);
             int32_t x = hl_cell_x(i), cy = y + (h - ch) / 2;
             if (ux.quark) {                           /* (Skiff Q3) QUARK: a note a bunch of particles in the pipe (played
                                                        * this bar: spent, a ring), a tie its trail, nothing a dot */
                 int32_t bx = x + HL_CELL_W / 2, by = y + h / 2;
-                int past = song.playing && t->seq_idx / 16u * 16u == first && i < play;
-                if (step_on(st) || st->hit) {
+                int past = playing && play/16u*16u==first && first+i<play;
+                if (step_on_view) {
                     if (past)
                         qk_ellipse(bx, by, 2, 2, 0, ux_mix(col, T_BG, 45), 8);
                     else {
                         qk_disc(bx, by, big ? 3 : 2, col);
                         cv_rect(bx - 1, by - 1, 1, 1, ux_mix(col, T_TEXT, 60));
                     }
-                } else if (step_tie(st))
+                } else if (step_tie_view)
                     cv_rect(x - 1, by, HL_CELL_W + 2, 1, ux_mix(col, T_BG, 40));
                 else
                     cv_rect(bx, by, 1, 1, T_DIM);
             } else if (ux.crypt) {                    /* (Skiff) CRYPT: the steps in ASCII, # a note, - a tie, . nothing */
                 int32_t base = cy + ch / 2 + 4;       /* (S's capitals centred on the cell) */
-                if (step_on(st) || st->hit)
+                if (step_on_view)
                     cr_ch(x, base, &AF_S, '#', on);
-                else if (step_tie(st))
+                else if (step_tie_view)
                     cr_ch(x + 1, base, &AF_S, '-', on);
                 else
                     cr_ch(x + 2, base, &AF_S, '.', sel ? off : T_DIM);
-            } else if (ux.neon && !sel && (step_on(st) || st->hit)) {   /* (Skiff N3) NEON: a lit */
+            } else if (ux.neon && !sel && step_on_view) {   /* (Skiff N3) NEON: a lit */
                 cv_rect(x - 1, cy - 1, HL_CELL_W + 2, ch + 2, ux_mix(on, lane, 65));      /* tube: its glow, its hot top */
                 cv_rect(x, cy, HL_CELL_W, ch, on);
                 cv_rect(x + 1, cy + 1, HL_CELL_W - 2, 1, ux_mix(on, T_TEXT, 60));
-            } else if (ux.neon && !sel && !step_tie(st)) {
+            } else if (ux.neon && !sel && !step_tie_view) {
                 cv_rect(x + HL_CELL_W / 2 - 1, cy + ch / 2, 2, 1, off);   /* (nothing: a dim dash) */
-            } else if (step_on(st) || st->hit) {
+            } else if (step_on_view) {
                 cv_rect(x, cy, HL_CELL_W, ch, on);
             } else {
                 cv_rect(x, cy, HL_CELL_W, ch, off);
-                if (step_tie(st))               /* a tie: the note held on, half the cell */
+                if (step_tie_view)               /* a tie: the note held on, half the cell */
                     cv_rect(x, cy + ch / 4, HL_CELL_W, ch / 2, on);
             }
-            if (song.playing && i == play && t->seq_idx / 16u * 16u == first) {   /* the step playing: a line before it */
+            if (playing && first+i==play) {          /* the step playing: a line before it */
                 if (ux.neon)                          /* ((Skiff N3) NEON: a laser, its glow) */
                     cv_rect(x - 3, y + 2, 3, h - 4, ux_mix(T_ACCENT, lane, 60));
                 if (ux.quark) {                       /* ((Skiff Q3) QUARK: the beam line, dotted gold; on the selected
@@ -168,12 +210,12 @@ static void graph_tracks(void)
     if (ux.crypt && tx >= 0)                          /* (Skiff C3) CRYPT: a torch on it, flickering a step to the next */
         cr_torch(tx, ty, ui.frame / 6u, 2);
     if (ux.quark && qx >= 0)                          /* (Skiff Q3) QUARK: its tracks a new way each step */
-        qk_burst(qx, qy, 8, TSEL->seq_idx * 2654435761u + 7u, 24, T_BG);
+        qk_burst(qx, qy, 8, play_seed * 2654435761u + 7u, 24, T_BG);
     if (ux.neon && tx >= 0) {                         /* (Skiff N3) NEON: the car, its nose at the playhead (on the steps
                                                        * just played), its light trails back to the lane's first step */
         int32_t cx = tx + 7 - 24;
         if (cx < HL_STEP_X - 6)
             cx = HL_STEP_X - 6;
-        ne_car(cx, ty + 8, SPR_CAR24, 1, T_TEXT, cx - (HL_STEP_X - 4), T_TRK(song.sel));
+        ne_car(cx, ty + 8, SPR_CAR24, 1, T_TEXT, cx - (HL_STEP_X - 4), T_TRK(selected));
     }
 }

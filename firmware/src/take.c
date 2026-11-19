@@ -31,7 +31,13 @@ static uint16_t take_p0[NTRK] __attribute__((section(".pool")));   /* (Skiff pha
  * (15 bits: round in 65 s) | the note << 15 | its velocity << 22 (0: its end) | the track << 29. In the pool (.bss and
  * the RAM code's room are tight): 2 KiB */
 #define FREE_EV 512u
+#if FELUCCA_CAFA
+/* The companion's bounded display buffers need the pool reserve. This log
+ * remains zero-initialized by main.c's existing RAMX startup pass. */
+static uint32_t free_ev[FREE_EV] __attribute__((section(".ramx.cafa_take")));
+#else
 static uint32_t free_ev[FREE_EV] __attribute__((section(".pool")));
+#endif
 static volatile uint32_t free_n;                      /* entries ever written (the slot: n % FREE_EV) */
 static uint32_t free_n0;                              /* the first one since the last stop */
 static volatile uint8_t free_hold;                    /* a picker open (ui_take.c) */

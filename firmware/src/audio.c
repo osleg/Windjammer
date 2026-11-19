@@ -19,29 +19,40 @@ struct felucca_dbg {
     uint32_t stage, page, home;           /* where the main loop is (breadcrumbs) */
     uint32_t prev_stage, prev_page, prev_home, prev_rst, prev_frames;   /* as found at boot */
 } felucca_dbg __attribute__((section(".noinit")));
+#if !FELUCCA_CONTROLLER
 static volatile uint32_t audio_halves, audio_max_us;
 static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 spent nested in this ISR (main.c) */
 static uint32_t audio_cpu_rem;                         /* keep the fractional IIR step: no low-load bias */
+#endif
 #define SCOPE_N 512u
 static int16_t scope_buf[SCOPE_N];
 static uint32_t scope_w;
 
 #if FELUCCA_CAFA
+#include "cafa_protocol.h"
 /* Keep the phone-only path out of the standalone ISR's inlined DSP body. */
 static __attribute__((noinline)) void cafa_audio_block(int32_t *out, uint32_t n)
 {
     /* No local engines, sequencer, click or effects. USB return is the sole DAC source.
      * USB capture is not tapped: no phone->Skiff->phone audio feedback loop. */
+#if !FELUCCA_CONTROLLER
     mi_r=mi_w;
     /* Continue owed note-offs without running the standalone clock/sequencer. */
     if (mn.lost) { mn.lost=0; mo_flush((1u<<NTRK)-1u); }
+#endif
     memset(out,0,n*2u*sizeof *out);
 #if FELUCCA_UAC_OUT
-    uac_play(out,n,(uint32_t)song.master_q12/2u);
+#if FELUCCA_DIRECT_PCM
+    if(cafa_return_active())
+#else
+    if(cafa_usb_return_on)
+#endif
+    uac_play(out,n,cafa_host_master ? 4096u : (uint32_t)song.master_q12/2u);
 #endif
 }
 #endif
 
+#if !FELUCCA_CONTROLLER
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
 {
     uint32_t i;
@@ -60,9 +71,12 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
     }
 }
 
+#endif
+
 /* Overload: two halves in a row above 85 % (the render plus TIMER5 nested in it), fade one voice over the
  * next block, and one more each half while it lasts. Keep each part's
  * lowest POLY note and MONO / LEGATO / UNISON lead, as the shared budget does. */
+#if !FELUCCA_CONTROLLER
 static volatile uint8_t shed_req;
 static uint8_t shed_over;                              /* bit k: the half k halves ago was over 85 % */
 #define SHED_TICKS ((HALF_FRAMES * 1000000u / FS) * 85u / 100u * FM1_TICKS_PER_US)   /* 85 % of a half */
@@ -111,6 +125,8 @@ static void shed_voice(void)
     }
 }
 
+#endif
+
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
     uint8_t p;
@@ -118,31 +134,49 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     felucca_dbg.in_audio = 1;                   /* first: TIMER5 nests from here on (main.c) */
     p = fm1_audio_pending();
     t0 = fm1_ticks();
+#if FELUCCA_DIAG
+    cafa_diag_audio_t0 = t0;
+#endif
+#if !FELUCCA_CONTROLLER
     t5_nested_ticks = 0;
+#endif
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), b, us;
+        uint32_t half = fm1_audio_free_half();
+#if !FELUCCA_CONTROLLER
+        uint32_t b,us;
+#endif
         int32_t *o = &abuf[half * HALF_WORDS];
+#if !FELUCCA_CONTROLLER
         if (shed_req) {
             shed_req = 0;
             shed_voice();
         }
+#endif
 #if FELUCCA_UAC
         uac_render_start();
 #endif
 #if FELUCCA_CAFA
         /* Mode changes are main-loop only, with the ISR excluded. One decision
          * per DMA half avoids putting the phone branch in every DSP sub-block. */
+#if FELUCCA_CONTROLLER
+        mo.tick = t0 + HALF_FRAMES * DAC_TICKS;
+        cafa_audio_block(o, HALF_FRAMES);
+#else
         if (cafa_audio_on) {
             mo.tick = t0 + HALF_FRAMES * DAC_TICKS;
-            cafa_audio_block(o,HALF_FRAMES);
+            cafa_audio_block(o, HALF_FRAMES);
         } else
 #endif
+#endif
+#if !FELUCCA_CONTROLLER
         for (b = 0; b < HALF_FRAMES; b += CTL) {
             mo.tick = t0 + (HALF_FRAMES + b) * DAC_TICKS;   /* when this block plays ((2.2) MIDI OUT, usb.c; seq.c kb_lat) */
             audio_block(o + 2u * b, CTL);
         }
+#endif
         fm1_audio_ack_half();
+#if !FELUCCA_CONTROLLER
         audio_halves++;
         us = shed_check(fm1_ticks() - t0);
         if (us > audio_max_us)
@@ -152,13 +186,16 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             song.cpu_q8 = load / CPU_AVG;
             audio_cpu_rem = load % CPU_AVG;
         }
+#endif
         if (fm1_audio_free_half() != half)
             felucca_dbg.late++;                         /* the DMA moved on while we rendered */
+#if !FELUCCA_CONTROLLER
         felucca_dbg.halves++;
         felucca_dbg.last_us = us;
         if (us > felucca_dbg.max_us)
             felucca_dbg.max_us = us;
         felucca_dbg.cpu_q8 = song.cpu_q8;
+#endif
     }
     felucca_dbg.in_audio = 0;
 }

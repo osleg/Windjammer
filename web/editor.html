@@ -2,13 +2,13 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only
      Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments -->
 <!-- Sample input recording and waveform trimming adapted from Andrea (@andreahaku), PR #29.
-     Skiff's web editor (after Felucca's). One file, no libraries. Protocol: EDITOR_PROTOCOL.md.
+     Windjammer web editor, derived from the Skiff and Felucca editors. One file, no libraries. Protocol: EDITOR_PROTOCOL.md.
      Add ?mock=1 to the URL to use a built-in simulated device. -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Skiff Editor</title>
+<title>Windjammer Editor</title>
 <style>
   /* Fukiai: Hügelton Instruments' icon font (MIT, FUKIAI-LICENSE.txt). Icons are text in .ic spans;
      they stay hidden until the face has loaded (html.fk), so a missing font never shows boxes. */
@@ -16,7 +16,7 @@
   /* ((Skiff 1.0) the look is the unit's BLOCKS (design/editor_looks.png A, the user's pick): the night, tiles, white
      values, Barlow Condensed (OFL, fonts/) for headings, labels and values, each track its colour, the sliders in the
      selected track's (--trk: renderTrackbar). Once connected the tokens follow the unit's THEME (renderPreferences:
-     SKIFF and HI-CON dark, PAPER light, CRYPT NEON QUARK their own, each with its tracks' colours,
+     WINDJAMMER and HI-CON dark, PAPER light, CRYPT NEON QUARK their own, each with its tracks' colours,
      tools/gen_ui_palettes.py); before that, the system's. Colours only here, as tokens. ((Skiff W6) DIM 4.5:1 and more
      on BG and TILE; LINE, an input's edge, 3:1 and more on TILE) */
   @font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-Medium.ttf") format("truetype"); font-weight: 500;
@@ -271,7 +271,7 @@
 <body>
 <main>
   <button class="lang" id="lang"></button>
-  <h1>Skiff Editor</h1>
+  <h1>Windjammer Editor</h1>
   <p class="dim"><a href="../installer/" style="color:inherit" data-t="installer"></a></p>
   <!-- always visible: connection, version, sync mode, the tabs and (Sound / Sequencer / Tracks) the track selector -->
   <header class="top">
@@ -488,7 +488,7 @@
     </div>
   </section>
 
-  <footer>Skiff by illuminus5 (<a href="https://github.com/illuminus5/skiff" target="_blank" rel="noopener">github.com/illuminus5/skiff</a>), built on Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>. GPL-3.0.<br>
+  <footer><a href="https://github.com/Osleg/Windjammer" target="_blank" rel="noopener">Windjammer</a> is based on <a href="https://github.com/illuminus5/skiff" target="_blank" rel="noopener">Skiff by illuminus5</a> and Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>. GPL-3.0.<br>
     <span data-t="foot"></span> M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <a href="FUKIAI-LICENSE.txt" data-t="iconsCredit"></a></footer>
 </main>
@@ -519,7 +519,7 @@ const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI:
    no theme of the device's warns). After Felucca 1.6's custom palette (palette.js, Leo Kuroshita) */
 const PAL_ROLES = ["BG", "SURF", "TEXT", "THEME", "ACCENT", "T1", "T2", "T3", "T4", "T5", "T6"];
 const PAL_BUILTIN = [
-  ["SKIFF", 0x0841, 0x18c3, 0xffdf, 0xffdf, 0xffdf, 0xfac6, 0x2616, 0xfde0, 0x941f, 0xfb75, 0xa726],
+  ["WINDJAMMER", 0x0841, 0x18c3, 0xffdf, 0xffdf, 0xffdf, 0xfac6, 0x2616, 0xfde0, 0x941f, 0xfb75, 0xa726],
   ["HI-CON", 0x0000, 0x2945, 0xffdf, 0xff40, 0x073f, 0xff40, 0xff40, 0xff40, 0xff40, 0xff40, 0xff40],
   ["PAPER", 0xf77c, 0xe6d9, 0x20e3, 0x0aa8, 0xa9c1, 0x0aa8, 0x0aa8, 0x0aa8, 0x0aa8, 0x0aa8, 0x0aa8],
   ["CRYPT", 0x0820, 0x20c2, 0xeeb5, 0xfd84, 0xfeef, 0xeb66, 0xf5a7, 0xde74, 0xeac8, 0xad6b, 0xcc36],
@@ -684,7 +684,7 @@ const parse = {
     o.locks = false;                              /* (1.1, INFO 4C 01) MOTION ops 5..7: locks, their kinds */
     o.menuCount = 0;                              /* (1.0.4, INFO 4E 01 count) the MENU settings MENU_DESC offers */
     o.kitLanes = 0;                               /* (Skiff W3, INFO 4B 01 8) KIT_GET / KIT_PUT: the DRUM-X kit's lanes */
-    o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 POOL, 3 LIST,
+    o.workflowCaps = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 POOL, 3 LIST,
                                                      4 PERFORM, (#21) 5 SMP_MIX, (2.0, #25) 6 a step's ties */
     o.song2 = 0;                                  /* (2.0, INFO 58 01 caps) bit 0: LIST2, NEW, COPY+, CHAIN, ONCE, the pool's
                                                      EMPTY and CLEAR UNUSED */
@@ -704,7 +704,7 @@ const parse = {
       }
       if (trailer[r] === 0x43 && trailer[r + 1] === 1) { o.stepx = trailer[r + 2]; r += 3; }   /* (Skiff W1) FLAM COND NUDGE */
       if (trailer[r] === 0x4B && trailer[r + 1] === 1) { o.kitLanes = trailer[r + 2]; r += 3; }   /* (Skiff W3) the DRUM-X kit */
-      if (trailer[r] === 0x57 && trailer[r + 1] === 1) { o.skiff = trailer[r + 2] & 127; r += 3; }   /* (Skiff W3) TRANSPORT .. (2.0) ties */
+      if (trailer[r] === 0x57 && trailer[r + 1] === 1) { o.workflowCaps = trailer[r + 2] & 127; r += 3; }   /* (Skiff W3) TRANSPORT .. (2.0) ties */
       if (trailer[r] === 0x49 && trailer[r + 1] === 1) {                                  /* (Skiff 1.3) wide ids: */
         o.pcount = trailer[r + 2] | trailer[r + 3] << 7;                                 /* P_COUNT and P_E0 whole */
         o.pe0 = trailer[r + 4] | trailer[r + 5] << 7;
@@ -2507,7 +2507,7 @@ function makeMockDevice(opt = {}) {
     uiCaps: opt.legacy || opt.v3 || opt.v5 ? 0 : opt.uiCaps ?? 25,   /* ((Skiff #27) 16: COLORS) */
     custom: { flags: 0, look: 0, c: new Array(11).fill(0), preview: null },   /* ((Skiff #27) THEME CUSTOM's set) */
     palette: 0, font: 0, monitor: 0, filter: 0, bankSig: 0,
-    palettes: ["SKIFF", "HI-CON", "PAPER", "CRYPT", "NEON", "QUARK"],   // (Skiff, R1) THEME: the device's list (tools/gen_ui_palettes.py)
+    palettes: ["WINDJAMMER", "HI-CON", "PAPER", "CRYPT", "NEON", "QUARK"],   // (Skiff, R1) THEME: the device's list (tools/gen_ui_palettes.py)
     favorites: Array.from({ length: ENG.length + 1 }, () => []),
     watch: false, v4: false, lastReq: 0,
   };
@@ -2995,7 +2995,7 @@ function makeMockDevice(opt = {}) {
         break;
       }
       case CMD.INFO:
-        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : "SKIFF (MOCK)"); b(ENG.length); b(Math.min(P_COUNT, 127)); b(G_COUNT); b(NSTEP); b(Math.min(P_E0, 127));
+        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : "WINDJAMMER (MOCK)"); b(ENG.length); b(Math.min(P_COUNT, 127)); b(G_COUNT); b(NSTEP); b(Math.min(P_E0, 127));
         ENG.forEach((e) => s(e.name));
         if (!opt.legacy) b(NTRK);
         if (!opt.legacy && !opt.v3 && !opt.v5) {
@@ -3532,7 +3532,7 @@ const TEXT = {
     sgEmpty: "空です", sgAutoFull: "完了（オートメーションなし: AUTOMATION FULL）", sgStopClear: "停止してからクリアしてください",
     sgApc: "APC mini mk2 接続中: 1〜6列は T1〜T6 のエントリー、7・8列はシーン、下のボタン1〜6は MUTE、右上の2つはページ（A–H / I–P）、右下は PLAY、フェーダー1〜6は LEVEL",
     sgFull: "パターンがいっぱいです: プールで未使用のものをクリアしてください", sgFailed: "本体で失敗しました", sgNothing: "クリアするものがありません", sgInUse: "使用中です",
-    sgNoFw: "このファームウェアにはソングのコマンドがありません。Skiff を更新してください。",
+    sgNoFw: "このファームウェアにはソングのコマンドがありません。Windjammer を更新してください。",
     confirmSave: "スロット {n} に上書き保存しますか？", confirmLoad: "スロット {n} を読み込みますか？ すべてのトラックの音色とシーケンスが置き換わります（元に戻せません）。",
     confirmLoadFile: "「{name}」を読み込みますか？ 今の音色は置き換わります（本体の SAVE 長押しで元に戻せます）。",
     confirmLoadFileSteps: "「{name}」を読み込みますか？ 今の音色とシーケンス（64 ステップ）が置き換わります。",
@@ -3672,7 +3672,7 @@ const TEXT = {
     sgEmpty: "Empty", sgAutoFull: "Done, without its automation (AUTOMATION FULL)", sgStopClear: "Stop to clear",
     sgApc: "APC mini mk2 connected: columns 1–6 T1–T6's entries, columns 7–8 the scenes, bottom buttons 1–6 MUTE, the top two side buttons the page (A–H, I–P), the bottom one PLAY, faders 1–6 LEVEL",
     sgFull: "Patterns full: clear unused ones in the pool", sgFailed: "Failed on the device", sgNothing: "Nothing to clear", sgInUse: "In use",
-    sgNoFw: "This firmware has no song commands: update Skiff.",
+    sgNoFw: "This firmware has no song commands: update Windjammer.",
     confirmSave: "Overwrite slot {n}?", confirmLoad: "Load slot {n}? The sounds and sequences of every track are replaced (no undo).",
     confirmLoadFile: "Load \"{name}\"? It replaces the current sound (hold SAVE on the device to undo).",
     confirmLoadFileSteps: "Load \"{name}\"? It replaces the current sound and the sequence (64 steps).",
@@ -3770,8 +3770,8 @@ function showTab(name) {
   if (name === "sequencer" && prev !== "sequencer" && dev && dev.dump && dev.stepsStale) op(() => loadSteps());   /* ((Skiff W7)) */
   if (name === "settings" && prev !== "settings" && dev && dev.dump && dev.info.menuCount) op(() => readMenu());   /* ((Skiff W3)) */
   if (name === "sound" && prev !== "sound" && kitShown()) op(() => readKit());
-  if (name === "projects" && prev !== "projects" && dev && dev.dump && dev.info.skiff & 2) op(() => readProj());   /* ((Skiff W3)) */
-  if (name === "song" && prev !== "song" && dev && dev.dump && dev.info.skiff & 28) op(() => readSong());   /* ((Skiff W3) the kit as the device has it) */
+  if (name === "projects" && prev !== "projects" && dev && dev.dump && dev.info.workflowCaps & 2) op(() => readProj());   /* ((Skiff W3)) */
+  if (name === "song" && prev !== "song" && dev && dev.dump && dev.info.workflowCaps & 28) op(() => readSong());   /* ((Skiff W3) the kit as the device has it) */
   if (name === "fm6" && prev !== "fm6" && dev && dev.dump && dev.info.fm6 && !fm6Listing) op(fm6Refresh);
 }
 function renderPanels() {
@@ -3793,7 +3793,7 @@ function renderPanels() {
     if (mine && "dev" in p.dataset && !dev) hint = want === "fm6" ? "fm6NeedDevice" : "needDevice";   /* (while connecting the status line says it) */
     if (show && want === "fm6" && fm6Off) { show = false; hint = "fm6NoFw"; }
     if (show && want === "samples" && !dev.smp) { show = false; hint = "smpNone"; }
-    if (show && want === "song" && !(dev.info.skiff & 28)) { show = false; hint = "sgNoFw"; }   /* ((Skiff W3)) */
+    if (show && want === "song" && !(dev.info.workflowCaps & 28)) { show = false; hint = "sgNoFw"; }   /* ((Skiff W3)) */
     p.hidden = !show;
   }
   $("hint").hidden = !hint;
@@ -3808,7 +3808,7 @@ function renderPanels() {
    (the selected track armed or not); the state read with each keep-alive (the device's own changes push nothing). A
    request the audio has yet to take shows as done */
 function renderTransport(x) {
-  const on = !!dev && !!dev.dump && !!dev.info && !!(dev.info.skiff & 1);
+  const on = !!dev && !!dev.dump && !!dev.info && !!(dev.info.workflowCaps & 1);
   $("transport").hidden = $("tstate").hidden = !on;
   if (!on) return;
   if (x) dev.transport = x;
@@ -3824,7 +3824,7 @@ function renderTransport(x) {
     ...(armed.length ? [`REC ${armed.join(" ")}`] : [])].join(" · ");
 }
 async function readTransport(d = dev) {
-  if (!d || !d.info || !(d.info.skiff & 1)) return;
+  if (!d || !d.info || !(d.info.workflowCaps & 1)) return;
   const x = parse[CMD.TRANSPORT](await sessionRequest(d, req.transport()));
   if (d === dev) renderTransport(x);
 }
@@ -3845,16 +3845,16 @@ const ENTS = "ABCDEFGHIJKLMNOP", pat2 = (n) => String(n).padStart(2, "0");
 const SG_RC = { list: [null, "sgEmpty", "sgAutoFull", "sgStopClear", "sgFull", "sgFailed"], snd: [null, "sgSndRefused"],
   pool: [null, "sgNothing", "sgInUse", "sgStopClear", "sgFailed"], perf: [null, "sgEmpty", "sgAutoFull", null, "sgFull"] };
 async function readSong(d = dev, pool = true, poll = false) {
-  if (!d || !d.info || !(d.info.skiff & 28)) return;
+  if (!d || !d.info || !(d.info.workflowCaps & 28)) return;
   const o = poll ? { quiet: true, retries: 0 } : undefined, rqs = (r) => sessionRequest(d, r, o);
-  if (poll && d.info.skiff & 1) { const x = parse[CMD.TRANSPORT](await rqs(req.transport())); if (d === dev) renderTransport(x); }
+  if (poll && d.info.workflowCaps & 1) { const x = parse[CMD.TRANSPORT](await rqs(req.transport())); if (d === dev) renderTransport(x); }
   const s = d.song = d.song || {};
-  if (d.info.skiff & 8) {
+  if (d.info.workflowCaps & 8) {
     const r = req.list(0, 0, 0, null, !!(d.info.song2 & 1));
     s.list = songReply(d, r, await rqs(r));
   }
-  if (d.info.skiff & 16) s.perf = parse[CMD.PERFORM](await rqs(req.perform()));
-  if (d.info.skiff & 4 && (pool || !s.pool)) s.pool = parse[CMD.POOL](await rqs(req.pool()));
+  if (d.info.workflowCaps & 16) s.perf = parse[CMD.PERFORM](await rqs(req.perform()));
+  if (d.info.workflowCaps & 4 && (pool || !s.pool)) s.pool = parse[CMD.POOL](await rqs(req.pool()));
   if (d === dev) { renderSong(); apcShow(); }
 }
 /* (2.0, INFO 58 01) the device has LIST2 (SONG ONCE, the chains), NEW, COPY+ and the pool's EMPTY, CLEAR UNUSED; a LIST
@@ -3917,7 +3917,7 @@ function apcShow() {
   } catch (e) { console.debug("APC LEDs", e); }   /* (unplugged: onState says so next) */
 }
 function apcPress(data) {
-  const a = apcAction(data, apc.page), caps = dev && dev.info ? dev.info.skiff : 0;
+  const a = apcAction(data, apc.page), caps = dev && dev.info ? dev.info.workflowCaps : 0;
   if (!a) return;
   if (a.do === "page") { apc.page = a.page; apcShow(); }
   else if (a.do === "entry" && caps & 8) songOp(lreq(3, a.k, a.e), "list");
@@ -3944,7 +3944,7 @@ function apcAttach() {
 }
 setInterval(() => {
   const d = dev;
-  if (!apc.input || !d || !d.info || !(d.info.skiff & 28) || busy || !d.link.idle || keepAlive.song) return;
+  if (!apc.input || !d || !d.info || !(d.info.workflowCaps & 28) || busy || !d.link.idle || keepAlive.song) return;
   keepAlive.song = true;
   readSong(d, false, true).catch(() => {}).finally(() => { keepAlive.song = false; });
 }, APC_POLL);
@@ -3960,7 +3960,7 @@ function keepFocus(box, draw) {
   if (n) n.focus();
 }
 function renderSong() {
-  const d = dev, caps = d && d.info ? d.info.skiff : 0, s = d && d.song;
+  const d = dev, caps = d && d.info ? d.info.workflowCaps : 0, s = d && d.song;
   $("sg-lists").hidden = !(caps & 8);
   $("sg-scenes").hidden = !(caps & 16);
   $("sg-pool").hidden = !(caps & 4);
@@ -4696,7 +4696,7 @@ function report(err) { if (err && err.message !== "closed") { console.warn(err);
 /* ((Skiff W3) PROJ_NAME, INFO 57 bit 1: the music now (its slot, its name, changed since), each slot's name; SAVE and
    RENAME take the name field's (the music's until edited). Read at connect, when the tab opens and after each of these) */
 async function readProj(d = dev) {
-  if (!d || !d.info || !(d.info.skiff & 2)) return;
+  if (!d || !d.info || !(d.info.workflowCaps & 2)) return;
   setProj(d, parse[CMD.PROJ_NAME](await sessionRequest(d, req.projName())));
 }
 function setProj(d, p) {
@@ -4789,7 +4789,7 @@ $("backup-export").addEventListener("click", () => op(async () => {
   assertSession(d);
   const file = await captureBackup((r, o) => sessionRequest(d, r, o), d.info.version, backupProgress);
   assertSession(d);
-  download(`Skiff-backup-${new Date().toISOString().slice(0, 10)}.json`, file);
+  download(`Windjammer-backup-${new Date().toISOString().slice(0, 10)}.json`, file);
   sayK("backupDone");
 }));
 $("backup-import").addEventListener("click", () => { if (dev?.info?.backupCaps & 2) $("backup-file").click(); });
@@ -4999,7 +4999,7 @@ async function writeStep(i, tr) {
   if (c.chance) s.chance = Math.max(0, Math.min(100, Math.round(+c.chance.value || 0)));
   if (c.ratchet && c.chance) s.ratchet = Math.max(1, Math.min(4, +c.ratchet.value || 1));
   if (c.cond) { s.flam = c.flam.checked; s.cond = +c.cond.value || 0; s.nudge = Math.max(-32, Math.min(31, Math.round(+c.nudge.value || 0))); }
-  if (c.cond && dev.info.skiff & 64) s.ties = notes.ties;   /* ((2.0, #25) "(C4)") */
+  if (c.cond && dev.info.workflowCaps & 64) s.ties = notes.ties;   /* ((2.0, #25) "(C4)") */
   if ((s.n || s.hit) && !s.vel) s.vel = 96;
   stepEdit.set(i, performance.now());
   try {
@@ -5394,7 +5394,7 @@ function recRow(k) {
 /* (#21) a sound's LEVEL, REV and DLY: 0..127 inside, % as the unit shows them (params.c F_PCT; every % round trips) */
 const pctOf = (v) => Math.floor((v * 100 + 63) / 127), rawOf = (p) => Math.floor((p * 127 + 50) / 100);
 const MIX0 = [127, 0, 0], MIX_KEYS = ["smpLevel", "smpRev", "smpDly"];
-const mixOn = () => !!dev && !!dev.info && !!(dev.info.skiff & 32);
+const mixOn = () => !!dev && !!dev.info && !!(dev.info.workflowCaps & 32);
 function pctInput(v, key, on) {
   const inp = el("input", { type: "number", class: "pct", min: 0, max: 100, step: 1, value: pctOf(v), title: t(key),
     disabled: smpBusy || recActive() });
@@ -5509,7 +5509,7 @@ function renderSamples() {
 /* the device's slots, and (#21) each one's sounds' LEVEL, REV, DLY (u.mix: SMP_MIX's reply) when its firmware has them */
 async function smpInfo(d = dev) {
   const si = parse[CMD.SMP_INFO](await sessionRequest(d, req.smpInfo()));
-  if (d.info && d.info.skiff & 32)
+  if (d.info && d.info.workflowCaps & 32)
     for (const [k, u] of si.slots.entries()) {
       if (!u.zones) continue;
       try { u.mix = parse[CMD.SMP_MIX](await sessionRequest(d, req.smpMix(k))); }
@@ -5545,7 +5545,7 @@ async function smpUpload(k, prog) {
     r = parse[CMD.SMP_END](await rq(req.smpEnd(k, hdr), { timeout: 2000, retries: 0 }));
     if (r.rc) throw new Error(`end rc ${r.rc} (${SMP_RC[r.rc] || "?"})`);
     let note = "";
-    if (session.info.skiff & 32) {                  /* ((#21) each sound's LEVEL, REV, DLY, in the slot's order) */
+    if (session.info.workflowCaps & 32) {                  /* ((#21) each sound's LEVEL, REV, DLY, in the slot's order) */
       const mix = built.zones.map((z) => z.mix || MIX0), m = parse[CMD.SMP_MIX](await rq(req.smpMix(k, mix)));
       if (m.rc === 1) throw new Error("mix rc 1");
       if (m.rc === 2 && mix.some((x) => x.join() !== MIX0.join())) note = " · " + t("smpMixTooLong");
@@ -5892,13 +5892,13 @@ async function keepAlive() {
       else if (d === dev) { d.watch = false; renderLive(); }
     } catch (e) { /* closed */ } finally { keepAlive.run = false; }
   } else if (gap > 850 && d.link.idle) {
-    if (tab === "song" && d.info.skiff & 28) {     /* ((Skiff W3) on the Song tab: it as the keep-alive, the pool each 4th) */
+    if (tab === "song" && d.info.workflowCaps & 28) {     /* ((Skiff W3) on the Song tab: it as the keep-alive, the pool each 4th) */
       if (!keepAlive.song) {
         keepAlive.song = true;
         keepAlive.n = (keepAlive.n | 0) + 1;
         readSong(d, keepAlive.n % 4 === 0, true).catch(() => {}).finally(() => { keepAlive.song = false; });
       }
-    } else if (d.info.skiff & 1) {                 /* ((Skiff W3) the transport's state as the keep-alive) */
+    } else if (d.info.workflowCaps & 1) {                 /* ((Skiff W3) the transport's state as the keep-alive) */
       d.link.request(req.transport(), { key: "ping", quiet: true, retries: 0 })
         .then((a) => { if (d === dev) renderTransport(parse[CMD.TRANSPORT](a)); }).catch(() => {});
     } else d.link.request(req.ping(), { key: "ping", quiet: true, retries: 0 }).catch(() => {});
@@ -6089,7 +6089,7 @@ function applyCustom(c) {
 }
 function renderPreferences(force = false) {
   const d = dev, p = d && d.preferences;
-  const LOOK = { SKIFF: "dark", "HI-CON": "dark", PAPER: "light", CRYPT: "crypt", NEON: "neon", QUARK: "quark" };   /* (Skiff 1.0) */
+  const LOOK = { WINDJAMMER: "dark", SKIFF: "dark", "HI-CON": "dark", PAPER: "light", CRYPT: "crypt", NEON: "neon", QUARK: "quark" };   /* (Skiff 1.0) */
   const cu = p && p.palettes[p.state.palette] === "CUSTOM" && p.colors && p.colors.stored ? p.colors : null;
   const lk = cu && LOOK[(PAL_BUILTIN[cu.look] || {}).name];
   const look = !p ? null : cu ? (["crypt", "neon", "quark"].includes(lk) ? lk : luma565(cu.c[0]) > 128 ? "light" : "dark") :
@@ -6156,7 +6156,7 @@ $("savefile").addEventListener("click", () => op(async () => {
     steps: dev.steps.map((s) => ({ n: s.n, notes: s.notes.slice(), time: s.time, flags: s.flags, vel: s.vel,   /* ((Skiff W1) */
       hit: s.hit | 0, acc: s.acc | 0, chance: s.chance ?? 100, ratchet: s.ratchet ?? 1, flam: s.flam | 0, cond: s.cond | 0,   /* whole) */
       nudge: s.nudge | 0, ties: s.ties | 0 })) };                                                                    /* ((2.0) */
-  download(`skiff-${fileSlug(data.engineName || "patch")}-${fileSlug(data.presetName || preset)}.json`, data);
+  download(`windjammer-${fileSlug(data.engineName || "patch")}-${fileSlug(data.presetName || preset)}.json`, data);
 }));
 $("loadfile").addEventListener("click", () => { $("file").value = ""; $("file").click(); });
 $("file").addEventListener("change", async () => {
@@ -6198,7 +6198,7 @@ $("file").addEventListener("change", async () => {
           ...(dev.info.chance ? { hit: s.hit | 0, acc: s.acc | 0, chance: s.chance ?? 100 } : {}),
           ...(dev.info.chance && dev.info.ratchet ? { ratchet: s.ratchet ?? 1 } : {}),
           ...(dev.info.chance && dev.info.ratchet && dev.info.stepx ? { flam: s.flam | 0, cond: s.cond | 0, nudge: s.nudge | 0,
-            ...(dev.info.skiff & 64 ? { ties: s.ties | 0 } : {}) } : {}) })));                /* ((2.0) the ties) */
+            ...(dev.info.workflowCaps & 64 ? { ties: s.ties | 0 } : {}) } : {}) })));                /* ((2.0) the ties) */
       }
     }
     dev.dump = await getDump();

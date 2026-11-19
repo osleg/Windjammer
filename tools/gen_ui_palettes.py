@@ -19,11 +19,11 @@ blends at palette_set() time (src/gfx.c, the same integer maths as mix() here):
   KEY  = mix(BG, TEXT, 78 %)    a keycap's fill (a mid-light cushion; its label INK, unavailable: a DIM fill)
   INK  = BG: text on a selection or THEME fill
 Outside the palette: REC, a fixed red; the QR code's fixed black and white; the crash screen's fixed red.
-(Skiff, the review's R1) The palettes are the MENU's THEME: SKIFF (the default), HI-CON and PAPER (for reading in
+(Skiff, the review's R1) The palettes are the MENU's THEME: WINDJAMMER (the default), HI-CON and PAPER (for reading in
 bright or dim light), CRYPT and NEON (their own font and widgets besides: src/gfx.c ux.crypt, ux.neon), QUARK (its own
 widgets: ux.quark). Saved settings name them by a
 tagged id (THEME_TAG + index). Earlier ids are migrated: PAL_TAG + an index into the eleven palettes before THEME
-(UI_PALETTE_MIGRATE11), and below 20 Felucca's oldest twenty (UI_PALETTE_MIGRATE20); a palette that is gone is SKIFF.
+(UI_PALETTE_MIGRATE11), and below 20 Felucca's oldest twenty (UI_PALETTE_MIGRATE20); a palette that is gone uses the default.
 --report prints the WCAG contrast of every pairing. The tool fails (exit 1) on any miss.
 """
 import argparse
@@ -34,7 +34,7 @@ from pathlib import Path
 PALETTES = [
     # Skiff's BLOCKS look (DESIGN.md): neutral tiles, white values, the one active thing inverted white; the colour
     # is the tracks' (TRACKS)
-    ("SKIFF",  (12, 12, 12),    (30, 30, 30),    (255, 255, 255), (255, 255, 255), (255, 255, 255)),
+    ("WINDJAMMER",  (12, 12, 12),    (30, 30, 30),    (255, 255, 255), (255, 255, 255), (255, 255, 255)),
     ("HI-CON", (0, 0, 0),       (40, 40, 40),    (255, 255, 255), (255, 232, 0),   (0, 230, 255)),
     ("PAPER",  (244, 239, 228), (226, 218, 202), (34, 30, 24),    (10, 84, 70),    (172, 56, 8)),
     # (Skiff) CRYPT, design/mock_crypt.py's B TORCHLIT: stone on the dark, bone text, amber values, flame for the one
@@ -47,10 +47,10 @@ PALETTES = [
     # the tracks the colour charges red, green, blue and their anticolours cyan, magenta, yellow
     ("QUARK",  (3, 7, 12),      (10, 21, 32),    (216, 243, 255), (79, 209, 255),  (255, 224, 102)),
 ]
-SKIFF, CRYPT, NEON, QUARK = "SKIFF", "CRYPT", "NEON", "QUARK"
+WINDJAMMER, CRYPT, NEON, QUARK = "WINDJAMMER", "CRYPT", "NEON", "QUARK"
 # the six tracks' colours (src/gfx.c T_TRK; (Skiff phase 6) T5, T6 too): a palette not named here gives every track
 # its THEME. Told apart by lightness as well as hue, and always drawn with the track's number (never the colour alone)
-TRACKS = {"SKIFF": [(255, 90, 54), (34, 195, 180), (255, 191, 0), (149, 128, 255),    # vermilion teal amber violet
+TRACKS = {"WINDJAMMER": [(255, 90, 54), (34, 195, 180), (255, 191, 0), (149, 128, 255),    # vermilion teal amber violet
                     (255, 111, 174), (163, 230, 53)],                                 # pink lime
           "CRYPT": [(236, 110, 50), (242, 182, 60), (222, 206, 166), (232, 88, 66),   # ember gold bone blood
                     (172, 172, 92), (204, 134, 176)],                                 # olive mauve
@@ -65,7 +65,7 @@ OLD = ["GREEN", "AMBER", "CYAN", "RED", "MONO", "VIOLET", "PINK", "ICE", "WARM",
        "LIGHT", "PAPER", "SKY", "MINT", "LILAC", "ROSE", "SAND", "L-HICON"]
 OLD_TO_NEW = {"HI-CON": "HI-CON", "L-HICON": "HI-CON", "PAPER": "PAPER", "LIGHT": "PAPER", "SKY": "PAPER",
               "MINT": "PAPER", "LILAC": "PAPER", "SAND": "PAPER", "ROSE": "PAPER"}   # (the twenty's ROSE was light)
-OLD11_TO_NEW = {"HI-CON": "HI-CON", "PAPER": "PAPER", "SKIFF": "SKIFF"}           # the rest: SKIFF
+OLD11_TO_NEW = {"HI-CON": "HI-CON", "PAPER": "PAPER", "SKIFF": WINDJAMMER}     # preserve the old palette ID
 PAL_TAG = 64                       # (before THEME) stored id = PAL_TAG + an index into OLD11
 THEME_TAG = 128                    # stored id = THEME_TAG + index
 REC_DARK, REC_LIGHT = (255, 72, 72), (190, 24, 40)
@@ -152,7 +152,7 @@ def main():
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args()
     fails = []
-    assert PALETTES[0][0] == SKIFF and len(OLD) == 20 and len(OLD11) == 11 and len(PALETTES) <= 100
+    assert PALETTES[0][0] == WINDJAMMER and len(OLD) == 20 and len(OLD11) == 11 and len(PALETTES) <= 100
     rows = [derive(p) for p in PALETTES]
     for name, d in rows:
         for f, b, lim, why in CHECKS:
@@ -186,7 +186,7 @@ def main():
             t = [to565(c) for c in TRACKS[p[0]]] if p[0] in TRACKS else [to565(p[4])] * NTRACKS
             out.append("    {" + ", ".join(f"0x{x:04x}" for x in t) + f"}},   /* {p[0]} */")
         out += ["};", f"#define UI_NPALETTES {len(PALETTES)}u",
-                f"#define UI_SKIFF_INDEX {names.index(SKIFF)}u          /* Skiff's default (src/panel.c settings_init) */",
+                f"#define UI_WINDJAMMER_INDEX {names.index(WINDJAMMER)}u /* Windjammer's default (src/panel.c settings_init) */",
                 f"#define UI_CRYPT_INDEX {names.index(CRYPT)}u          /* CRYPT: its own font and widgets too */",
                 f"#define UI_NEON_INDEX {names.index(NEON)}u          /* NEON: CRYPT's font, its own widgets */",
                 f"#define UI_QUARK_INDEX {names.index(QUARK)}u          /* QUARK: Skiff's font, its own widgets */",
@@ -199,10 +199,10 @@ def main():
                 f"#define UI_CRASH_BG 0x{to565(CRASH_BG):04x}u", f"#define UI_CRASH_INK 0x{to565(CRASH_INK):04x}u", "",
                 "/* the eleven palettes before THEME: " + " ".join(OLD11) + " */",
                 "static const uint8_t UI_PALETTE_MIGRATE11[11] = {" +
-                ", ".join(str(names.index(OLD11_TO_NEW.get(n, SKIFF))) for n in OLD11) + "};",
+                ", ".join(str(names.index(OLD11_TO_NEW.get(n, WINDJAMMER))) for n in OLD11) + "};",
                 "/* Felucca's oldest twenty: " + " ".join(OLD) + " */",
                 "static const uint8_t UI_PALETTE_MIGRATE20[20] = {" +
-                ", ".join(str(names.index(OLD_TO_NEW.get(n, SKIFF))) for n in OLD) + "};", ""]
+                ", ".join(str(names.index(OLD_TO_NEW.get(n, WINDJAMMER))) for n in OLD) + "};", ""]
         Path(a.out).write_text("\n".join(out))
     for f in fails:
         print("FAIL", f)

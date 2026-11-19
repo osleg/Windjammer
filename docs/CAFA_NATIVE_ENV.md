@@ -1,4 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
+
+Historical development notes from the upstream Skiff checkout. The [Windjammer build guide](../BUILDING.md) and [public protocol](OPEN_PROTOCOL.md) describe the maintained controller. Archived Android prototype commands apply to the original checkout.
 # CAFA r3: first native Skiff page, not full UI parity
 
 The user tested r2 and reported working physical controls and audio routing, but

@@ -195,8 +195,8 @@ static void ui_power_on(void)
     ui.home = 1;
     ui.force = 1;
     panel = PANEL_DEFAULT;
-    settings.palette = UI_SKIFF_INDEX;
-    palette_set(UI_SKIFF_INDEX);
+    settings.palette = UI_WINDJAMMER_INDEX;
+    palette_set(UI_WINDJAMMER_INDEX);
     transport_req = 0;
     panic_req = 0;
     mi_r = mi_w = midi_in_overflow = 0;
@@ -1522,7 +1522,7 @@ static int test_display_preferences(void)
     bad += check("THEME OCT+ previews the next palette (PAPER, light) without closing the menu",
                  settings.palette == 2 && T_BG == UI_PALETTES[2].bg && ux.light && ui.menu == 1 && !song.octave &&
                  memcmp(before, host_screen, sizeof before) && !memcmp(sounds, trk, sizeof sounds));
-    bad += check("THEME KNOB 1 steps on to CRYPT, NEON (both the pixel faces), QUARK (Barlow), then wraps to SKIFF (R1: "
+    bad += check("THEME KNOB 1 steps on to CRYPT, NEON (both the pixel faces), QUARK (Barlow), then wraps to WINDJAMMER (R1: "
                  "SKIFF HI-CON PAPER CRYPT NEON QUARK)",
                  str_eq(MI_NAME[MI_COLOR], "THEME") && (turn(EN_K1, 1), settings.palette == UI_CRYPT_INDEX) && ux.crypt &&
                  str_eq(UI_PALETTES[UI_CRYPT_INDEX].name, "CRYPT") && &AF_S == &AF_S_PX &&
@@ -1530,8 +1530,8 @@ static int test_display_preferences(void)
                  str_eq(UI_PALETTES[UI_NEON_INDEX].name, "NEON") &&
                  (turn(EN_K1, 1), settings.palette == UI_QUARK_INDEX) && ux.quark && !ux.neon && &AF_S != &AF_S_PX &&
                  str_eq(UI_PALETTES[UI_QUARK_INDEX].name, "QUARK") &&
-                 (turn(EN_K1, 1), settings.palette == UI_SKIFF_INDEX) && !ux.quark && !ux.crypt && !ux.neon && &AF_S != &AF_S_PX &&
-                 str_eq(UI_PALETTES[UI_SKIFF_INDEX].name, "SKIFF"));
+                 (turn(EN_K1, 1), settings.palette == UI_WINDJAMMER_INDEX) && !ux.quark && !ux.crypt && !ux.neon && &AF_S != &AF_S_PX &&
+                 str_eq(UI_PALETTES[UI_WINDJAMMER_INDEX].name, "WINDJAMMER"));
     settings.lowcut = 2;
     ui.menu_sel = MI_LOWCUT;
     press(B_OCTUP);
@@ -1554,7 +1554,7 @@ static int test_display_preferences(void)
     k = ui.menu == 1 && settings.lowcut == 0u;         /* (OCT- at the first value: nothing, the menu stays) */
     press(B_HOME);
     bad += check("HOME leaves display preferences without changing musical state (OCT- no longer closes)",
-                 k && !ui.menu && settings.palette == UI_SKIFF_INDEX && !memcmp(sounds, trk, sizeof sounds));
+                 k && !ui.menu && settings.palette == UI_WINDJAMMER_INDEX && !memcmp(sounds, trk, sizeof sounds));
     return bad;
 }
 
@@ -1676,7 +1676,7 @@ static int test_menu_tabs(void)
         turn(EN_K3, -1); ok &= menu_get(i) == want && ui.menu == 1;
     }
     ui_prefs = 0; settings_hold = HOLD_DEF; settings_leds = LEDS_DIM;
-    settings.lowcut = 0; fx_lowcut = 0; menu_put(MI_COLOR, UI_SKIFF_INDEX);
+    settings.lowcut = 0; fx_lowcut = 0; menu_put(MI_COLOR, UI_WINDJAMMER_INDEX);
     song.g[G_CLOCK] = song.g[G_ROUTE] = 0;
     menu_put(MI_PREVIEW, 0);
     memset(&favorites.factory[15][6], 0, 6);            /* ((1.3) T1..T6 on channels 1..6 again) */
@@ -4373,7 +4373,7 @@ static int test_bughunt_ui2(void)
 /* L is a sparse face (tools/gen_aa_font.py L_CHARS): every string drawn in it has all its glyphs */
 static int test_large_face(void)
 {
-    static const char *const FIXED[] = {"SKIFF", "0123456789"};   /* main.c, ui_menu.c; ui_draw.c draw_uboot */
+    static const char *const FIXED[] = {"WINDJAMMER", "0123456789"};   /* main.c, ui_menu.c; ui_draw.c draw_uboot */
     uint32_t i, missing = 0;
     const char *s;
     for (i = 0; i < NB + NE + 2u; i++)                              /* ui_input.c setup_show: the control names */
@@ -9011,7 +9011,7 @@ static int test_blocks(void)
     int bad = 0, ok;
     int32_t x, y, rows = 0;
     ui_power_on();
-    settings.palette = UI_SKIFF_INDEX; palette_set(UI_SKIFF_INDEX);
+    settings.palette = UI_WINDJAMMER_INDEX; palette_set(UI_WINDJAMMER_INDEX);
     ui.force = 1; frame();
     turn(EN_K1, 1);                                    /* HOME: CUT just turned */
     ok = ui.home && ui.hot_t && ui.hot_col == 0u;
@@ -10063,7 +10063,7 @@ static int test_playhead_line(void)
         if (!ok) { printf("  PLAYHEAD LINE on %s: %s\n", UI_PALETTES[p].name, figure ? "the same" : "changed"); break; }
     }
     menu_put(MI_PHEAD, 0);
-    menu_put(MI_COLOR, UI_SKIFF_INDEX);
+    menu_put(MI_COLOR, UI_WINDJAMMER_INDEX);
     song.playing = 0;
     bad += check("(#27) PLAYHEAD LINE: HOME without the torch, the car, the collision; SKIFF, HI-CON, PAPER as they were", ok);
     return bad;

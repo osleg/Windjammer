@@ -89,19 +89,47 @@ static const uint8_t MI_TAB[MI_COUNT] = {
                                                                              * (Skiff) CPU CLOCK (SYSTEM's seven scroll) */
     MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM,                                  /* CALIBRATION, (U4) RESET SETTINGS, ABOUT */
 };
+/* Controller device menus show only hardware and transport preferences that
+ * still have an effect. Stored row ids stay unchanged for existing settings. */
+static int menu_row_visible(uint32_t row)
+{
+#if FELUCCA_CONTROLLER
+    switch (row) {
+    case MI_COLOR: case MI_LARGE: case MI_ANIM:
+    case MI_THRU: case MI_CLK: case MI_PANEL: case MI_RESET: case MI_ABOUT:
+        return 1;
+    default: return 0;
+    }
+#else
+    (void)row;
+    return 1;
+#endif
+}
+static uint32_t mtab_nth(uint32_t t, uint32_t k)
+{
+    uint32_t i;
+    for (i = 0; i < MI_COUNT; i++)
+        if (MI_TAB[i] == t && menu_row_visible(i) && !k--)
+            return i;
+    return MI_COUNT;
+}
+static uint32_t mtab_rank(uint32_t row)
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < row && i < MI_COUNT; i++)
+        if (MI_TAB[i] == MI_TAB[row] && menu_row_visible(i)) n++;
+    return n;
+}
 typedef char mtab_fits_ui[sizeof ui.menu_row >= MTAB_COUNT ? 1 : -1];   /* (ui.c: the row last picked per tab) */
 static uint32_t mtab_first(uint32_t t)                 /* a tab's first row */
 {
-    uint32_t i = 0;
-    while (i < MI_COUNT && MI_TAB[i] != t)
-        i++;
-    return i;
+    return mtab_nth(t, 0);
 }
 static uint32_t mtab_rows(uint32_t t)                  /* .. and how many it has */
 {
     uint32_t i, n = 0;
     for (i = 0; i < MI_COUNT; i++)
-        n += MI_TAB[i] == t;
+        n += MI_TAB[i] == t && menu_row_visible(i);
     return n;
 }
 /* a row OCT+ acts on, with no value to step: CALIBRATION, RESET SETTINGS, ABOUT; (1.3) MIDI LEARN (on, the MENU closed;
@@ -364,7 +392,7 @@ static void menu_put(uint32_t row, uint32_t v)
 static void settings_reset(void)
 {
     uint32_t i;
-    menu_put(MI_COLOR, UI_SKIFF_INDEX);
+    menu_put(MI_COLOR, UI_WINDJAMMER_INDEX);
     ui_prefs = PREF_BPM_LOCK;
     fx_usb_fixed = 0;
     ui_rec_prefs &= (uint8_t)~(PREF_SCALE_LEDS >> 8);

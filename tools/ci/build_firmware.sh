@@ -61,7 +61,7 @@ if [[ -f "$OUT/baseline/felucca.elf" && -f "$OUT/experimental-balanced/felucca.e
         | tee "$OUT/size-diff.txt"
 fi
 printf 'Corresponding source: https://github.com/%s/tree/%s\n' \
-    "${GITHUB_REPOSITORY:-osleg/skiff}" "$(git rev-parse HEAD)" > "$OUT/SOURCE.txt"
+    "${GITHUB_REPOSITORY:-Osleg/Windjammer}" "$(git rev-parse HEAD)" > "$OUT/SOURCE.txt"
 cp LICENSE LICENSING.md docs/ENGINE_BALANCE.md docs/EXPERIMENTAL_CI.md "$OUT/"
 cp -R LICENSES "$OUT/"
 cp assets/samples-cc0/ATTRIBUTION.txt "$OUT/ATTRIBUTION-SAMPLES.txt"

@@ -4,6 +4,9 @@
 #include "../firmware/src/cafa_protocol.h"
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_CAFA 1
+#ifndef FELUCCA_CONTROLLER
+#define FELUCCA_CONTROLLER 0
+#endif
 #define FELUCCA_OTA 1
 static cafa_link_t cafa;
 static volatile uint8_t cafa_audio_on;
@@ -137,10 +140,269 @@ static void dynamic_v5(void) {
   fm1_in.buttons=fm1_in.notes=0;cafa_first=1;cafa_input();assert(dynamic_drain(out)==33 && cafa_u14(out+30)==42);
   cafa_draw();host_enc[panel.enc[0]]=panel.dir[0];cafa_input();assert(dynamic_drain(out)==33 && cafa_u14(out+30)==43);
  }
- f[4]=CAFA_BYE;cafa_frame(f,9);assert(!cafa.phase && !cafa_audio_on);
+ f[4]=CAFA_BYE;cafa_frame(f,9);assert(!cafa.phase && cafa_audio_on == FELUCCA_CONTROLLER);
  puts("CAFA v5: runtime labels/formatted values, 100-engine catalog, native cards in all palettes/sizes, text-only redraw, project isolation and displayed-context INPUT passed");
 }
+#include "cafa_native_overlay_test.h"
+#include "cafa_native_graph_test.h"
+/* Drive real VIEW_PART publications and measure the LCD writes between them.
+ * A final framebuffer alone cannot catch an erase followed by the same pixels. */
+static void publish_native_test_view(const uint8_t *view,unsigned length,unsigned revision)
+{
+ uint8_t frame[165]={0x7d,0x43,0x41,6,WIRE6_VIEW_PART,123,0};
+ unsigned offset=0;
+ cafa_put14(frame+7,revision);cafa_put14(frame+9,length);
+ while(offset<length){
+  unsigned count=length-offset<152u?length-offset:152u;
+  cafa_put14(frame+11,offset);memcpy(frame+13,view+offset,count);
+  assert(cafa_frame(frame,13u+count));offset+=count;fm1_ms+=34;
+ }
+ assert(wire6.phase==2 && wire6.revision==revision);so_r=so_w;
+}
+static void transient_overlay_keeps_graph(void)
+{
+ uint8_t view[3072];
+ ui_power_on();
+ unsigned length=native_test_view(view,0);
+ cafa_native_profile_draw(view,length,1);
+ memcpy(image,host_screen,sizeof image);
+ uint8_t *tag=view+length;
+ tag[0]=CAFA_NATIVE_TRANSIENT_BOX;tag[1]=67;tag[2]=0;
+ tag[3]=tag[4]=0;memset(tag+5,' ',64);memcpy(tag+5,"RECORDED",8);tag[69]=1;
+ assert(cafa_native_view_valid(view,length+70));
+ cafa_native_profile_draw(view,length+70,1);
+ int changed=0;
+ for(unsigned y=0;y<240;y++)for(unsigned x=0;x<240;x++)if(image[240*y+x]!=host_screen[240*y+x]) {
+   assert(x>=TB_X-1 && x<=TB_X+TB_W && y>=graph_y()+TB_Y-1 && y<=graph_y()+TB_Y+TB_H);
+   changed=1;
+ }
+ assert(changed);
+ cafa_native_profile_draw(view,length,1);
+ assert(!memcmp(image,host_screen,sizeof image));
+}
+static void native_refresh_tests(void)
+{
+ uint8_t hello[]={0x7d,0x43,0x41,6,WIRE6_HELLO,123,0,0,0,1,0,0,1,'A',2,1,1,0,1,9,1,0,1};
+ uint8_t view[3072];unsigned length;
+ ui_power_on();wire6_leave();usb.config=1;
+ assert(cafa_frame(hello,sizeof hello));assert(wire6.phase==1);so_r=so_w;
+ length=native_test_view(view,0);
+ publish_native_test_view(view,length,1);assert(cafa_draw());
+ native_pixels=0;publish_native_test_view(view,length,2);assert(cafa_draw());
+ assert(native_pixels==0); /* Periodic publication of the same view. */
+ memcpy(image,host_screen,sizeof image);
+ memcpy(view+81,"UPDATED FOOTER",14);wire6_put28(view+2,28);
+ publish_native_test_view(view,length,3);
+ publish_native_test_view(view,length,4); /* A repeat before the display gets CPU time. */
+ assert(wire6.drawn_context==27);
+ native_full_fills=0;assert(cafa_draw());
+ assert(wire6.drawn_context==28 && !native_full_fills);
+ assert(memcmp(image,host_screen,sizeof image));
+ memcpy(image,host_screen,sizeof image);
+ cafa_native_profile_draw(view,length,1);
+ assert(!memcmp(image,host_screen,sizeof image));
+ length=native_test_view(view,57);
+ publish_native_test_view(view,length,5);assert(cafa_draw());
+ assert(cafa_input());so_r=so_w;
+ memcpy(image,host_screen,sizeof image);
+ host_enc[panel.enc[EN_PRESET]]=panel.dir[EN_PRESET];
+ assert(cafa_input());assert(cafa_draw());so_r=so_w;
+ assert(memcmp(image,host_screen,sizeof image)); /* Local menu navigation with an idle host. */
+ native_pixels=0;assert(cafa_draw());assert(native_pixels==0);
+ wire6_leave();
+}
+static void native_region_parity(const uint8_t *view,unsigned length)
+{
+ memcpy(image,host_screen,sizeof image);
+ cafa_native_profile_draw(view,length,1);
+ assert(!memcmp(image,host_screen,sizeof image));
+}
+static void native_region_tests(void)
+{
+ uint8_t hello[]={0x7d,0x43,0x41,6,WIRE6_HELLO,123,0,0,0,1,0,0,1,'A',2,1,1,0,1,9,1,0,1};
+ uint8_t view[3072];unsigned length,change,rev=1;
+ ui_power_on();wire6_leave();usb.config=1;
+ assert(cafa_frame(hello,sizeof hello));so_r=so_w;
+ length=native_test_view(view,0);length=native_graph_section(view,0,&change);
+ memcpy(view+112,"ATTACK      ",12);memcpy(view+124,"50            ",14);
+ cafa_put14(view+142,8192);view[144]=1;view[145]=1;
+ memcpy(view+112+72,"DEPTH       ",12);memcpy(view+124+72,"19            ",14);
+ cafa_put14(view+142+72,3000);view[144+72]=1;view[145+72]=1;
+ assert(cafa_native_view_valid(view,length));
+ publish_native_test_view(view,length,rev++);assert(cafa_draw());
+ native_region_parity(view,length);
+ /* One card's text and value updates only its own 57-pixel strip. */
+ memcpy(view+112,"CUTOFF      ",12);memcpy(view+124,"51            ",14);
+ cafa_put14(view+142,8500);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>0 && native_pixels<5000 && !native_full_fills);
+ native_region_parity(view,length);
+ memcpy(view+33,"UPDATED TITLE",13);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>0 && native_pixels<8000 && !native_full_fills);
+ native_region_parity(view,length);
+ cafa_put14(view+change,14000u);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>8000 && native_pixels<57600 && !native_full_fills);
+ native_region_parity(view,length);
+ memcpy(view+81,"UPDATED FOOTER",14);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>0 && native_pixels<10000 && !native_full_fills);
+ native_region_parity(view,length);
+ /* Two publications before the frame must retain both card regions. */
+ memcpy(view+124,"52            ",14);publish_native_test_view(view,length,rev++);
+ memcpy(view+124+72,"20            ",14);publish_native_test_view(view,length,rev++);
+ native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>2500 && native_pixels<8000 && !native_full_fills);
+ native_region_parity(view,length);
+ /* ENV playback position and transport affect the header, not its curve. */
+ view[32]=1;cafa_put14(view+22,4);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>0 && native_pixels<8000 && !native_full_fills);
+ native_region_parity(view,length);
+ /* A card value also feeds the FX fader graph; subtitle titles the scale graph. */
+ length=native_test_view(view,5);length=native_graph_section(view,5,&change);
+ publish_native_test_view(view,length,rev++);assert(cafa_draw());native_region_parity(view,length);
+ cafa_put14(view+112+30,9500);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>8000 && !native_full_fills);native_region_parity(view,length);
+ length=native_test_view(view,12);length=native_graph_section(view,12,&change);
+ publish_native_test_view(view,length,rev++);assert(cafa_draw());native_region_parity(view,length);
+ memcpy(view+57,"C SHARP SCALE",13);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>8000 && !native_full_fills);native_region_parity(view,length);
+ /* A layer redraw remains bounded even when its fields overlap several painters. */
+ length=native_test_view(view,49);publish_native_test_view(view,length,rev++);assert(cafa_draw());
+ memcpy(view+81,"LAYER UPDATE",12);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels>0 && !native_full_fills);native_region_parity(view,length);
+ view[32]=1u;cafa_put14(view+22,12u);
+ publish_native_test_view(view,length,rev++);assert(cafa_draw());
+ cafa_put14(view+22,16u);
+ publish_native_test_view(view,length,rev++);native_pixels=native_full_fills=0;assert(cafa_draw());
+ assert(native_pixels==240u*H_HEAD && !native_full_fills);native_region_parity(view,length);
+ wire6_leave();
+ puts("Native kind-7 regions: card, head, graph, footer, accumulated updates and ENV playback are selective and full-frame exact");
+}
+static void native_chrome_tests(void)
+{
+ uint8_t old[3072],view[3072];unsigned n,k,mask,changed=0;
+ uint8_t *row,*chrome;
+ ui_power_on();ui_prefs|=PREF_LARGE;
+ n=native_test_view(view,CAFA_SCREEN_HOME);
+ cafa_put14(view+15,NTRK);cafa_put14(view+24,2);cafa_put14(view+28,NTRK);
+ view[n]=CAFA_NATIVE_ROWS;cafa_put14(view+n+1,1u+48u*NTRK);view[n+3]=NTRK;
+ for(k=0;k<NTRK;k++) {
+  row=view+n+4u+48u*k;memset(row,' ',40u);memcpy(row,"SOUND A",7);
+  row[40]=(uint8_t)(k==2u ? 1u : 0u);cafa_put14(row+43,16383u);
+ }
+ n+=4u+48u*NTRK;
+ view[n]=CAFA_NATIVE_CHROME;cafa_put14(view+n+1,56u);chrome=view+n+3u;
+ memset(chrome,0,56u);cafa_put14(chrome,16383u);
+ memset(chrome+3u,' ',9u);memset(chrome+13u,' ',40u);
+ memcpy(chrome+29u,"ANALOG  ",8);memcpy(chrome+37u,"SOUND A         ",16);
+ n+=59u;assert(cafa_native_view_valid(view,n));
+ cafa_native_profile_draw(view,n,1);memcpy(old,view,n);
+ memcpy(chrome+37u,"SOUND B",7);
+ mask=cafa_native_profile_regions(old,n,view,n);
+ assert(mask==CAFA_PAINT_FOOT);cafa_native_profile_draw_regions(view,n,0,mask);native_region_parity(view,n);
+ memcpy(old,view,n);cafa_put14(chrome,19u);
+ mask=cafa_native_profile_regions(old,n,view,n);
+ assert(mask==CAFA_PAINT_HEAD);cafa_native_profile_draw_regions(view,n,0,mask);native_region_parity(view,n);
+ memcpy(old,view,n);chrome[53u]=1u;
+ mask=cafa_native_profile_regions(old,n,view,n);
+ assert(mask==0x1eu);cafa_native_profile_draw_regions(view,n,0,mask);native_region_parity(view,n);
+ memcpy(old,view,n);row=view+CAFA_NATIVE_HEADER+4u+48u*3u;
+ memcpy(row,"BRAVO  ",7);
+ mask=cafa_native_profile_regions(old,n,view,n);
+ assert(mask==CAFA_PAINT_GRAPH);
+ memcpy(image,host_screen,sizeof image);
+ cafa_native_profile_draw_regions(view,n,0,mask);
+ for(unsigned y=graph_y();y<graph_y()+graph_h();y++)for(unsigned x=120u;x<238u;x++)
+  changed|=image[y*240u+x]!=host_screen[y*240u+x];
+ assert(changed);native_region_parity(view,n);
+ /* A third-party producer may put its rows after CHROME. */
+ memcpy(old,view,n);
+ memcpy(view+CAFA_NATIVE_HEADER,old+n-59u,59u);
+ memcpy(view+CAFA_NATIVE_HEADER+59u,old+CAFA_NATIVE_HEADER,n-CAFA_NATIVE_HEADER-59u);
+ assert(cafa_native_view_valid(view,n));
+ memcpy(old,view,n);
+ memcpy(view+CAFA_NATIVE_HEADER+59u+4u+3u*48u,"CHARLIE",7u);
+ mask=cafa_native_profile_regions(old,n,view,n);
+ assert(mask==CAFA_PAINT_GRAPH);cafa_native_profile_draw_regions(view,n,0,mask);native_region_parity(view,n);
+ puts("Native CHROME header, cards, footer and six-sound large HOME redraw match full frames");
+}
+static unsigned native_chord_view(uint8_t *v,unsigned screen,unsigned mode)
+{
+ unsigned n=native_test_view(v,screen),count=mode==3u?1u:2u;
+ uint8_t *keys,*row;
+ memcpy(v+57,mode<3u?(screen==13u?"CHORD KEYS OFF":"FOLLOW OFF"):"C MAJOR",mode<3u?(screen==13u?14u:10u):7u);
+ v[n]=CAFA_NATIVE_KEYBOARD;cafa_put14(v+n+1,20u);keys=v+n+3u;
+ keys[48u/7u]|=1u<<(48u%7u);keys[60u/7u]|=1u<<(60u%7u);
+ keys[84u/7u]|=1u<<(84u%7u);keys[19]=0;n+=23u;
+ v[n]=CAFA_NATIVE_ROWS;cafa_put14(v+n+1,1u+48u*count);v[n+3]=(uint8_t)count;
+ row=v+n+4u;memset(row,' ',40u);
+ memcpy(row,screen==13u?"CHORD VIEW V1":"FOLLOW VIEW V1",screen==13u?13u:14u);
+ memcpy(row+16u,"ON ROOT",7u);row[40]=screen==14u?2u:0u;
+ cafa_put14(row+41u,mode);cafa_put14(row+43u,48u);cafa_put14(row+45u,84u);
+ if(count==2u) {
+  row+=48u;memset(row,' ',40u);
+  if(mode==4u){memcpy(row,"STRUM",5u);cafa_put14(row+41u,40u);cafa_put14(row+43u,2u);}
+  else memcpy(row+16u,"[K1] A TRACK TO FOLLOW",22u);
+ }
+ n+=4u+48u*count;assert(cafa_native_view_valid(v,n));return n;
+}
+static void native_chord_rows_tests(void)
+{
+ uint8_t v[3072],legacy[3072];unsigned n,plain;
+ ui_power_on();
+ n=native_chord_view(v,13u,0u);cafa_native_profile_draw(v,n,1);memcpy(image,host_screen,sizeof image);
+ n=native_chord_view(v,13u,3u);cafa_native_profile_draw(v,n,1);
+ assert(memcmp(image,host_screen,sizeof image));memcpy(image,host_screen,sizeof image);
+ n=native_chord_view(v,13u,4u);cafa_native_profile_draw(v,n,1);
+ assert(memcmp(image,host_screen,sizeof image));
+ n=native_chord_view(v,14u,2u);cafa_native_profile_draw(v,n,1);memcpy(image,host_screen,sizeof image);
+ n=native_chord_view(v,14u,3u);cafa_native_profile_draw(v,n,1);
+ assert(memcmp(image,host_screen,sizeof image));memcpy(image,host_screen,sizeof image);
+ cafa_put14(v+n-48u+45u,128u);cafa_native_profile_draw(v,n,1);
+ assert(memcmp(image,host_screen,sizeof image));
+ plain=native_test_view(legacy,13u);memcpy(legacy+57,"LEGACY CHORD",12u);
+ legacy[plain]=CAFA_NATIVE_KEYBOARD;cafa_put14(legacy+plain+1,20u);
+ legacy[plain+3u+60u/7u]|=1u<<(60u%7u);plain+=23u;
+ cafa_native_profile_draw(legacy,plain,1);memcpy(image,host_screen,sizeof image);
+ legacy[plain]=CAFA_NATIVE_ROWS;cafa_put14(legacy+plain+1,49u);legacy[plain+3]=1u;
+ memset(legacy+plain+4u,' ',40u);memcpy(legacy+plain+4u,"OTHER ROW",9u);
+ plain+=52u;assert(cafa_native_view_valid(legacy,plain));
+ cafa_native_profile_draw(legacy,plain,1);assert(!memcmp(image,host_screen,sizeof image));
+ puts("Native CHORD/FOLLOW typed off, wide, strum, source-note and legacy rows render independently");
+}
+#if FELUCCA_CONTROLLER
+static void controller_idle_device_test(void)
+{
+ uint16_t menu_pixel;
+ ui_power_on();wire6_leave();cafa.phase=0;cafa_release_guard=0;
+ cafa_idle_menu=cafa_idle_dirty=0;cafa_idle_home_t=0;
+ fm1_ms=0;fm1_in.buttons=1u<<panel.btn[B_HOME];
+ cafa_input();fm1_ms=701;cafa_input();
+ assert(cafa_idle_menu && cafa_device_menu.active && cafa_device_menu.sel==MI_COLOR);
+ assert(!mtab_rows(MTAB_CONTROL) && !mtab_rows(MTAB_AUDIO));
+ assert(cafa_draw());menu_pixel=host_screen[100u*240u+8u];
+ fm1_in.buttons=0;cafa_input();
+ host_enc[panel.enc[EN_PRESET]]=panel.dir[EN_PRESET];cafa_input();assert(cafa_draw());
+ assert(cafa_device_menu.sel==MI_LARGE); /* hidden PLAYHEAD row is skipped */
+ host_enc[panel.enc[EN_ALGO]]=panel.dir[EN_ALGO];cafa_input();assert(cafa_draw());
+ assert(MI_TAB[cafa_device_menu.sel]==MTAB_SYSTEM);
+ fm1_in.buttons=1u<<panel.btn[B_HOME];host_pressed=fm1_in.buttons;
+ cafa_input();assert(!cafa_idle_menu && !cafa_device_menu.active);
+ assert(cafa_draw() && host_screen[100u*240u+8u]!=menu_pixel);
+ ui.uboot=3;assert(cafa_draw());memcpy(image,host_screen,sizeof image);
+ ui.uboot=2;assert(cafa_draw() && memcmp(image,host_screen,sizeof image));
+ ui.uboot=0;assert(cafa_draw() && memcmp(image,host_screen,sizeof image));
+ puts("Controller idle: long HOME menu, available rows, exit and recovery countdown passed");
+}
+#endif
 int main(void) {
+ transient_overlay_keeps_graph();
  uint8_t f[101],saved_tracks[sizeof trk],saved_ui[sizeof ui],saved_motion[sizeof motion],saved_fav[sizeof favorites];
  song_t saved_song;unsigned i,j;
  ui_power_on();usb.config=1;
@@ -184,13 +446,22 @@ int main(void) {
  state(f,4,0);cafa_frame(f,101);so_r=so_w;cafa_draw();assert(!cafa_native_shown);
  memcpy(image,host_screen,sizeof image);cafa_dirty=2;cafa_draw();assert(!memcmp(image,host_screen,sizeof image));
  state(f,5,3);cafa_frame(f,101);so_r=so_w;native_full_fills=0;cafa_draw();assert(cafa_native_shown && !native_full_fills);
- /* Session exit still restores untouched standalone project data and route. */
- state(f,5,3);f[4]=CAFA_BYE;cafa_frame(f,9);assert(!cafa.phase && !cafa_audio_on);
+ /* Session exit preserves untouched project data and selects the build's idle route. */
+ state(f,5,3);f[4]=CAFA_BYE;cafa_frame(f,9);assert(!cafa.phase && cafa_audio_on == FELUCCA_CONTROLLER);
  assert(!memcmp(saved_tracks,trk,sizeof trk));
  printf("Native CAFA ENV: real Skiff cards/graph pixel parity, project/UI isolation, hot-knob updates, 1024-step header, page return and v2 exit passed; track projection=%zu bytes, UI cache=%zu bytes\n",sizeof(track_t),sizeof cafa_native_cache);
  palette_parity();
  loom_v4();
  loom_fixtures();
  dynamic_v5();
+ native_overlay_tests();
+ native_graph_tests();
+ native_refresh_tests();
+ native_region_tests();
+ native_chrome_tests();
+ native_chord_rows_tests();
+#if FELUCCA_CONTROLLER
+ controller_idle_device_test();
+#endif
  return 0;
 }

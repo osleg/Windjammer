@@ -9,6 +9,13 @@
 /* build.py: FELUCCA_<NAME>=0 / 1 in the environment overrides these. Elsewhere: FELUCCA_SLICE, FELUCCA_FM4
  * (core.h: the SLICE engine, the DIGITAL engine), FELUCCA_ICONS (icons.c, the parameter icons; on by default),
  * FELUCCA_OTA_RAMONLY (ota.c). */
+/* Controller profile keeps the standalone target available separately. */
+#ifndef FELUCCA_CONTROLLER
+#define FELUCCA_CONTROLLER 0
+#endif
+#if FELUCCA_CONTROLLER && !FELUCCA_CAFA
+#error "controller profile requires CAFA"
+#endif
 /* (CAFA prototype) Explicit opt-in; stock standalone behavior remains the default. */
 #ifndef FELUCCA_CAFA
 #define FELUCCA_CAFA 0
@@ -53,7 +60,7 @@
 #endif
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v2.5.1"       /* Skiff's; shown in the menu, the console and the editor; build.py --release X.Y */
+#define FELUCCA_VERSION "v2.5.1"       /* firmware version shown in the menu, console and editor; build.py --release X.Y */
 #endif
 #if FELUCCA_OTA && !FELUCCA_FLASH
 #error "FELUCCA_OTA needs FELUCCA_FLASH"
@@ -83,6 +90,16 @@ static inline __attribute__((always_inline)) void *audio_far(void *p) { void *vo
 
 /* ------------------------------------------------------------- HAL --- */
 #include <stdint.h>
+#define FELUCCA_DIAG (FELUCCA_CONTROLLER && FELUCCA_CAFA)
+#if FELUCCA_DIAG
+static void cafa_diag_key_downscan(uint32_t);
+static void cafa_diag_pcm(uint32_t, uint32_t);
+static void cafa_diag_dac(uint32_t, uint32_t);
+static int cafa_diag_pcm_needed(void), cafa_diag_dac_needed(void);
+static void cafa_diag_timeout(void);
+static uint32_t cafa_diag_audio_t0;
+#define FM1_DIAG_KEY_DOWNSCAN(t) cafa_diag_key_downscan(t)
+#endif
 #include "fm1_time.h"
 #include "fm1_sys.h"
 #include "fm1_irq.h"
@@ -139,6 +156,7 @@ static cafa_link_t cafa __attribute__((section(".bss.cafa_ui")));
 static volatile uint8_t cafa_audio_on;
 static int cafa_input(void), cafa_draw(void), cafa_leds(void);
 static int cafa_frame(const uint8_t *, uint32_t);
+static void cafa_part_ready(void);
 #endif
 #include "audio.c"
 

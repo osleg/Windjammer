@@ -38,12 +38,18 @@ int main(void) {
         assert(abuf[HALF_WORDS+i]==(int32_t)i-128);
     }
     host_pending=0;fm1_alnk0_irq();assert(return_calls==3 && host_acks==3);
+    /* The same companion ISR must remain silent for an explicit phone route. */
+    host_dma_advanced=host_half_reads=0;
+    host_pending=FM1_AUDIO_HALF;cafa_usb_return_on=0;
+    fm1_alnk0_irq();assert(return_calls==3 && host_acks==4);
+    for(i=0;i<HALF_WORDS;i++)assert(abuf[i]==0);
+    cafa_usb_return_on=1;
     host_dma_advanced=host_half_reads=0;
     /* Resume a silent standalone half: DSP golden/engine tests cover actual
      * voices. Stock ANALOG signed shifts are outside this focused UB check. */
     memset(trk[0].v,0,sizeof trk[0].v);
     cafa_audio_on=0;mi_r=mi_w=0;song.playing=0;click_req=0;host_pending=FM1_AUDIO_HALF;
-    fm1_alnk0_irq();assert(host_tap_n==CTL && return_calls==3 && host_acks==4);
+    fm1_alnk0_irq();assert(host_tap_n==CTL && return_calls==3 && host_acks==5);
     puts("CAFA audio ISR: one USB render per DMA half, master gain, cleared output, ownership, note-offs and standalone restoration passed");
     return 0;
 }

@@ -600,7 +600,7 @@ static int ug_check(void)                           /* 1: a picture changed, wen
         if (!strcmp(ug[i].name, ug[i - 1u].name) && dup++ < 5u) printf("ui_render: UI GOLDEN: %s drawn twice\n", ug[i].name);
     if (getenv("UI_GOLDEN_UPDATE")) {
         if (!(f = fopen(path, "w"))) { fprintf(stderr, "cannot write %s\n", path); return 1; }
-        fprintf(f, "# Skiff UI golden (tests/ui_render.c): FNV-1a 64 of every picture ui_render writes, then its name.\n"
+        fprintf(f, "# Windjammer UI golden (tests/ui_render.c): FNV-1a 64 of every picture ui_render writes, then its name.\n"
                    "# Rewritten by UI_GOLDEN_UPDATE=1 tests/run_tests.sh -- only for an intended change of the look.\n");
         for (i = 0; i < nug; i++) fprintf(f, "%016llx %s\n", (unsigned long long)ug[i].h, ug[i].name);
         fclose(f);
@@ -1891,7 +1891,7 @@ static void draw(int s)
     }
     if (s == S_SPLASH) {                          /* the power-on splash (main.c, before the UI): its lines, the version
                                                    * shown FELUCCA_VERSION (run_tests.sh: src/felucca.c's) */
-        static const char WANT[] = "Skiff|" FELUCCA_VERSION "|on Felucca 1.1.5|H\xFCgelton + community";
+        static const char WANT[] = "Windjammer|" FELUCCA_VERSION "|From Skiff|and Felucca";
         splash_seen[0] = 0;
         in_splash = 1;
         draw_splash();
@@ -1968,7 +1968,7 @@ static void sweep_columns(void)
             continue;                                    /* (DIGITAL without FELUCCA_FM4: no track has it) */
         for (i = 0; i < NPAGES; i++) {
             state();
-            pal(UI_SKIFF_INDEX);
+            pal(UI_WINDJAMMER_INDEX);
             eng(e);
             ui.home = 0; ui.page = (uint8_t)i; page_entered();
             if (!page_visible(i)) continue;
@@ -2015,7 +2015,7 @@ static void sweep_columns(void)
             lint();
             sweep_motion();
         }
-        state(); pal(UI_SKIFF_INDEX); eng(e); go_home();   /* HOME's four knobs of this engine */
+        state(); pal(UI_WINDJAMMER_INDEX); eng(e); go_home();   /* HOME's four knobs of this engine */
         snprintf(name, sizeof name, "%s%s/HOME", large_on ? "LARGE " : "", ENGINES[e]->name);
         cur_name = name;
         draw(-1);
@@ -2024,7 +2024,7 @@ static void sweep_columns(void)
     }
     for (e = 0; e < 4u; e++) {                           /* the MOD page: every source and destination */
         int32_t v;
-        state(); pal(UI_SKIFF_INDEX); go_title("MOD");
+        state(); pal(UI_WINDJAMMER_INDEX); go_title("MOD");
         cur_name = large_on ? "LARGE MOD sweep" : "MOD sweep";
         for (v = 0; v < MD_N; v++) {
             TSEL->p[P_M1SRC] = (int16_t)(v % MS_N); TSEL->p[P_M1DST] = (int16_t)v; TSEL->p[P_M1AMT] = (int16_t)(e * 40 - 64);
@@ -2111,7 +2111,7 @@ static void roll_frames(const char *dir)
             }
             for (k = 0; k < 8u; k++) ui_draw();
         }
-        if (p == UI_SKIFF_INDEX || p == UI_CRYPT_INDEX || p == UI_NEON_INDEX || p == UI_QUARK_INDEX) {
+        if (p == UI_WINDJAMMER_INDEX || p == UI_CRYPT_INDEX || p == UI_NEON_INDEX || p == UI_QUARK_INDEX) {
             ug_add(UI_PALETTES[p].name, "bpm_roll", bimg, sizeof bimg);
             ug_add(UI_PALETTES[p].name, "card_roll", cimg, sizeof cimg);
             if (dir) {
@@ -2167,7 +2167,7 @@ static void align_sweeps(void)
     int32_t v;
     if (nul) rep = nul;                              /* (not lint scenes: their draws pile up) */
     {                                                   /* ((Skiff U2) BLOCKS, the only look) */
-        state(); pal(UI_SKIFF_INDEX);
+        state(); pal(UI_WINDJAMMER_INDEX);
         cur_name = "sweep: cushions";
         for (k = 0; k < NTRK; k++)
             for (i = 0; i < 3u; i++) {
@@ -2233,7 +2233,7 @@ static void align_sweeps(void)
                 draw_countin();
             }
         cin_total = cin_left = 0;
-        state(); pal(UI_SKIFF_INDEX);
+        state(); pal(UI_WINDJAMMER_INDEX);
         cur_name = "sweep: NAME";
         song.playing = 0; go_page(GR_USER); name_open(NK_USER_SAVE, 6);
         for (k = 0; k < 2u; k++) {                       /* ABC, 123: every key cycling, every letter typed next */
@@ -2260,7 +2260,7 @@ static void align_sweeps(void)
             cv_begin(240, H_GRAPH, T_SURF);
             graph_roll(TSEL, T_THEME);
         }
-        state(); pal(UI_SKIFF_INDEX);
+        state(); pal(UI_WINDJAMMER_INDEX);
         cur_name = "sweep: drum kits";
         for (k = 0; k < 4u; k++) {
             drum(k);
@@ -2270,7 +2270,7 @@ static void align_sweeps(void)
                 graph_grid(TSEL, T_THEME);
             }
         }
-        state(); pal(UI_SKIFF_INDEX);
+        state(); pal(UI_WINDJAMMER_INDEX);
         cur_name = "sweep: mixer";
         go_page(GR_TRK);
         for (v = 0; v < 256; v++) {                    /* (then with LARGE: the strip) */
@@ -2338,7 +2338,7 @@ int main(int argc, char **argv)
     const char *out = argc > 1 ? argv[1] : "build/ui_new";
     char path[600];
     uint32_t p, s;
-    static const char *const SHOW[] = {"SKIFF", "HI-CON", "PAPER", "CRYPT", "NEON", "QUARK"};   /* ((Skiff, R1) THEME's) */
+    static const char *const SHOW[] = {"WINDJAMMER", "HI-CON", "PAPER", "CRYPT", "NEON", "QUARK"};   /* ((Skiff, R1) THEME's) */
     snprintf(path, sizeof path, "%s/report.txt", out);
     rep = fopen(path, "w");
     if (!rep) { fprintf(stderr, "cannot write %s\n", path); return 1; }
@@ -2393,10 +2393,10 @@ int main(int argc, char **argv)
             cur_name = name;
             setup((int)s);
             pal(p);
-            if (p == UI_SKIFF_INDEX) aud = audf;
+            if (p == UI_WINDJAMMER_INDEX) aud = audf;
             draw((int)s);
             lint();
-            if (p == UI_SKIFF_INDEX) { audit_scene(S_NAME[s]); aud = 0; }
+            if (p == UI_WINDJAMMER_INDEX) { audit_scene(S_NAME[s]); aud = 0; }
             for (k = 0; k < sizeof SHOW / sizeof SHOW[0]; k++)
                 if (!strcmp(UI_PALETTES[p].name, SHOW[k])) write_ppm(out, SHOW[k], S_NAME[s]);
         }
@@ -2407,7 +2407,7 @@ int main(int argc, char **argv)
         static const uint16_t CC[11] = {RGB(16, 24, 32), RGB(28, 40, 54), RGB(242, 232, 216), RGB(255, 154, 60),
                                         RGB(127, 224, 200), RGB(255, 107, 107), RGB(255, 209, 102), RGB(6, 214, 160),
                                         RGB(76, 201, 240), RGB(199, 125, 255), RGB(244, 162, 97)};
-        static const uint8_t LOOKS[4] = {UI_SKIFF_INDEX, UI_CRYPT_INDEX, UI_NEON_INDEX, UI_QUARK_INDEX};
+        static const uint8_t LOOKS[4] = {UI_WINDJAMMER_INDEX, UI_CRYPT_INDEX, UI_NEON_INDEX, UI_QUARK_INDEX};
         uint32_t n0 = nfind, k, l;
         for (l = 0; l < 4u; l++)
             for (s = 0; s < S_COUNT; s++) {
@@ -2469,7 +2469,7 @@ int main(int argc, char **argv)
                     draw((int)s);
                     ntall += !ui.menu && !ui.confirm && !name_on() && large_kind() == LK_TALL;
                     lint();
-                    if (p == UI_SKIFF_INDEX || p == UI_CRYPT_INDEX || p == UI_NEON_INDEX || p == UI_QUARK_INDEX)
+                    if (p == UI_WINDJAMMER_INDEX || p == UI_CRYPT_INDEX || p == UI_NEON_INDEX || p == UI_QUARK_INDEX)
                         write_ppm(out, tag, S_NAME[s]);
                 }
         }
@@ -2493,7 +2493,7 @@ int main(int argc, char **argv)
             char name[32];
             snprintf(name, sizeof name, "FM6 ALG %u", a);
             cur_name = name;
-            state(); pal(UI_SKIFF_INDEX); eng(ENGI_FM6); TSEL->p[P_E0] = (int16_t)a; go_title("EDIT 1");
+            state(); pal(UI_WINDJAMMER_INDEX); eng(ENGI_FM6); TSEL->p[P_E0] = (int16_t)a; go_title("EDIT 1");
             draw(-1);
             lint();
         }

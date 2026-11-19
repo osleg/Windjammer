@@ -238,8 +238,8 @@ static const engine_t ENG_FORMANT = {
     },
     .presets = FORMANT_PRESETS,
     .npresets = NELEM(FORMANT_PRESETS),
-    .note_on = formant_note_on,
-    .render = formant_render,
+    .note_on = ENG_AUDIO_CALLBACK(formant_note_on),
+    .render = ENG_AUDIO_CALLBACK(formant_render),
     .knob = {P_E0, P_E4, P_E5, P_E2},
     .poly = 4,
 };

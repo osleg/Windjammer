@@ -68,6 +68,7 @@ static void descriptors(void)
 static void fresh(void)
 {
     memset(&uo, 0, sizeof uo); memset(uo_ring, 0, sizeof uo_ring);
+    cafa_keytime_return=0;
     uo_w = uo_r = 0; usb.config = 1; uo_stream(1);
 }
 static void feed(uint32_t n, int16_t l, int16_t r)
@@ -138,8 +139,25 @@ static void drift(double ppm)
     assert(uo.go && !uo.underruns && !uo.overruns && renders > 20000 && hi < UO_N);
     printf("60 s drift %+.0f ppm: no under/overruns, max fill %u/%u\n", ppm, hi, UO_N);
 }
+static void keytime_right_lane(void)
+{
+    int32_t out[2*HALF_FRAMES]={0};
+    fresh();feed(UO_TGT,1234,24576);
+    cafa_keytime_return=1;uac_play(out,HALF_FRAMES,4096);
+    for(unsigned i=0;i<HALF_FRAMES;i++) {
+        assert(out[2u*i]==1234*256);
+        assert(out[2u*i+1u]==0); /* right cue never reaches the codec */
+    }
+    fresh();feed(UO_TGT,1234,24576);
+    memset(out,0,sizeof out);
+    uac_play(out,HALF_FRAMES,4096);
+    for(unsigned i=0;i<HALF_FRAMES;i++) {
+        assert(out[2u*i]==1234*256);
+        assert(out[2u*i+1u]==24576*256); /* ordinary USB stereo remains audible */
+    }
+}
 int main(void)
 {
-    descriptors(); lifecycle(); drift(0); drift(-200); drift(200);
+    descriptors(); lifecycle(); keytime_right_lane(); drift(0); drift(-200); drift(200);
     puts("CAFA USB playback tests passed"); return 0;
 }

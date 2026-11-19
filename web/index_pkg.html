@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Skiff</title>
+<title>Windjammer Installer</title>
 <style>
   :root { --bg: #fff; --fg: #000; --dim: #777; }
   @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
 <body>
 <main>
   <button class="lang" id="lang"></button>
-  <h1>Skiff</h1>
+  <h1>Windjammer Installer</h1>
   <p data-t="intro"></p>
   <p data-t="warn"></p>
   <p class="small" data-t="direct"></p>
@@ -37,7 +37,7 @@
   <p class="small"><span data-t="brick"></span>
     <a href="https://github.com/kurogedelic/FM-1-transporter" target="_blank" rel="noopener" style="color:inherit">FM-1-transporter</a></p>
   <p class="small"><span data-t="smk"></span>
-    <a href="https://github.com/illuminus5/skiff/blob/main/SMK37.md" target="_blank" rel="noopener" style="color:inherit">SMK37.md</a></p>
+    <a href="https://github.com/Osleg/Windjammer/blob/main/SMK37.md" target="_blank" rel="noopener" style="color:inherit">SMK37.md</a></p>
   <p><button id="go" disabled data-t="install"></button></p>
   <details style="margin-top:24px">
     <summary data-t="stockTitle"></summary>
@@ -53,11 +53,11 @@
   <pre id="log"></pre>
   <p><a href="../editor/" style="color:inherit" data-t="editor"></a></p>
   <p><a href="../../learn/" style="color:inherit" data-t="learn"></a></p>
-  <p class="small">Skiff by illuminus5, built on Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms, drum voices, Sample Pack and Fukiai icons (MIT).<br>
+  <p class="small">Windjammer is based on <a href="https://github.com/illuminus5/skiff" target="_blank" rel="noopener">Skiff by illuminus5</a> and Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms, drum voices, Sample Pack and Fukiai icons (MIT).<br>
     SMK-37 support after genkigenki's SMK-37 layer (GPL-3.0). Font: Barlow Condensed (The Barlow Project Authors, SIL OFL 1.1). DRUM-X: JIANT FM by juanjiant-bit (GPL-3.0). Samples: Versilian Studios VSCO-2 Community Edition and VCSL (CC0 1.0).<br>
     FM6 engine: msfa from Dexed (Google Inc., Pascal Gauthier, Apache-2.0). The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     M-VAVE, FM-1 and SMK-37 are trademarks of their respective owners.<br>
-    <span data-t="license"></span> <a href="https://github.com/illuminus5/skiff" target="_blank" rel="noopener" style="color:inherit">github.com/illuminus5/skiff</a></p>
+    <span data-t="license"></span> <a href="https://github.com/Osleg/Windjammer" target="_blank" rel="noopener" style="color:inherit">github.com/Osleg/Windjammer</a></p>
 </main>
 <script type="module">
 /*LIB*/
@@ -68,31 +68,31 @@ const TEXT = {
     warn: "書き込み中は USB を抜かず、電源も切らないでください。途中で切れても書き込みモードのまま残るので、挿し直す（電源を入れる）と続きから再開します。",
     install: "インストール", other: "English",
     editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
-    learn: "Learn Skiff（使い方ガイド。章ごとに解説動画つき・英語のみ）",
+    learn: "Skiff の使い方ガイド（英語・章ごとに動画つき）",
     direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
     brick: "FM-1 で万一インストールに失敗して起動しなくなった場合は、復旧に Transporter が必要です:",
-    smk: "SMK-37 Pro は Skiff に新しく対応した機種です。インストール前にバックアップと公式への戻し方をお読みください:",
-    beta: "Skiff はカスタムファームウェアです。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで機器が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
-    back: "M-VAVE から公式ファームウェア（FM-1 は Skiff の前に入っていた版で V15 か V16、SMK-37 Pro は V016）を取得し、未変更の FM-1.fwsc または SMK-37_Pro_016.fwsc を選んでください。M-VAVE のダウンロードページは現在 V16 です。V15 は M-VAVE の fm1_open リポジトリ（sdk/firmware/FM-1_015.fwsc）にあります。ファイルはこのブラウザ内で検証し、サーバーへ送りません。",
+    smk: "SMK-37 Pro は Windjammer に新しく対応した機種です。インストール前にバックアップと公式への戻し方をお読みください:",
+    beta: "Windjammer はカスタムファームウェアです。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで機器が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
+    back: "M-VAVE から公式ファームウェア（FM-1 は Windjammer の前に入っていた版で V15 か V16、SMK-37 Pro は V016）を取得し、未変更の FM-1.fwsc または SMK-37_Pro_016.fwsc を選んでください。M-VAVE のダウンロードページは現在 V16 です。V15 は M-VAVE の fm1_open リポジトリ（sdk/firmware/FM-1_015.fwsc）にあります。ファイルはこのブラウザ内で検証し、サーバーへ送りません。",
     stockTitle: "公式ファームウェアに戻す", stockFile: "公式 FM-1.fwsc（V15 または V16）または SMK-37_Pro_016.fwsc", stockGo: "バックアップして公式ファームウェアへ戻す",
-    stockBackup: "現在の曲・保存曲・音色バンク・サンプル・設定を先に保存します。全体バックアップ非対応版は、Skiff を更新してから行ってください。復元は Skiff を再インストールしてエディタから行います。",
+    stockBackup: "現在の曲・保存曲・音色バンク・サンプル・設定を先に保存します。全体バックアップ非対応版は、Windjammer を更新してから行ってください。復元は Windjammer を再インストールしてエディタから行います。",
     stockRecovery: "更新中断の再開：全体バックアップはすでにパソコンへ保存済み",
-    stockValid: "公式ファームウェアを確認しました: ", stockConfirm: "全体バックアップファイルをパソコンに保存できましたか？ 続けると公式ファームウェアへ戻します。Skiff の曲は公式ファームウェアでは開けません。",
+    stockValid: "公式ファームウェアを確認しました: ", stockConfirm: "全体バックアップファイルをパソコンに保存できましたか？ 続けると公式ファームウェアへ戻します。Windjammer の曲は公式ファームウェアでは開けません。",
     stockNeedBackup: "書き込みモードからはバックアップできません。保存済みバックアップがある場合だけ、更新中断の再開にチェックしてください。",
-    stockUnsupported: "このファームウェアは Skiff の全体バックアップを作れません。古い Skiff なら先に最新版をインストールしてください。他のファームウェアから戻すには M-VAVE のアップデーターを使ってください。",
+    stockUnsupported: "このファームウェアは全体バックアップに対応していません。古い Skiff なら先に最新版をインストールしてください。他のファームウェアから戻すには M-VAVE のアップデーターを使ってください。",
     stockIsStock: "この機器はすでにその公式ファームウェアです。",
-    stockNotSkiff: "この機器は Skiff ではないため、バックアップする Skiff の曲はありません。他のファームウェアから戻すには M-VAVE のアップデーターを使ってください。機器の報告: ",
-    saved20: "Skiff 2.0 は、それより前のファームウェアで保存したデータをそのままでは開けません。先にこの機器の全体バックアップをこのパソコンに保存しました（Skiff-backup-....json）。これが元に戻す方法です: 今のファームウェアを入れ直し、エディタで復元します。Skiff 2.0 をインストールしますか？",
-    converting: "前のファームウェアで保存したデータを 2.0 用に変換中 ",
-    converted: "完了。前のファームウェアで保存したデータを 2.0 用に変換しました（下に一覧）。",
-    asIs: "完了。この機器のデータはそのまま 2.0 で開けます。",
+    stockNotSkiff: "この機器からバックアップに対応した応答がありませんでした。他のファームウェアから戻すには M-VAVE のアップデーターを使ってください。機器の報告: ",
+    saved20: "古いファームウェアで保存したデータは変換が必要な場合があります。先にこの機器の全体バックアップをこのパソコンに保存しました（Windjammer-backup-....json）。これが元に戻す方法です: 今のファームウェアを入れ直し、エディタで復元します。Windjammer をインストールしますか？",
+    converting: "前のファームウェアで保存したデータを Windjammer 用に変換中 ",
+    converted: "完了。前のファームウェアで保存したデータを Windjammer 用に変換しました（下に一覧）。",
+    asIs: "完了。この機器のデータはそのまま Windjammer で開けます。",
     convertedPart: "完了しましたが、前のファームウェアで保存したデータの一部はそのままです（下に一覧）。本体では OLD FORMAT と表示されます。空きパターンが足りなかったプロジェクトは、SAVE > PATTERNS で空けてからエディタでバックアップし、それを復元すると変換されます。",
     convertFailed: "インストールは完了しましたが、前のデータの変換に失敗しました。保存したバックアップをエディタで復元してください（復元時に変換されます）。",
     stockWrongModel: "選んだファイルは、接続している機器とは別の機種用です。",
-    stockSkiffOld: "書き込みはしていません。この Skiff はその公式版にまだ対応していません。最新の Skiff をインストールしてから、公式ファームウェアに戻してください。",
-    stockNeedsV16: "書き込みはしていません。この FM-1 の起動部は V16 のものです（Skiff の前は V16 でした）。戻せるのは V16 です。M-VAVE の現在の FM-1.fwsc（V16）を選んでください。",
-    stockNeedsV15: "書き込みはしていません。この FM-1 の起動部は V15 のものです（Skiff の前は V15 でした）。戻せるのは V15 です。M-VAVE の fm1_open リポジトリ（sdk/firmware）の FM-1_015.fwsc を選んでください。その後 M-VAVE の M-UPGRADE で V16 にできます。",
-    stockSmkHead: "書き込みはしていません。Skiff はそのまま使えます。このキーボードの起動部は V016 のものではありません（別の版で出荷されたか、Skiff の前のファームウェアが書き換えました）。そのため V016 には戻せません。Skiff が動いている間は、M-VAVE のアップデーターでも同じ確認で止まります。Skiff の前に何が入っていたかを、Skiff の GitHub で教えてください。",
+    stockSkiffOld: "書き込みはしていません。現在のファームウェアはその公式版への復元に対応していません。最新の Windjammer をインストールしてから、公式ファームウェアに戻してください。",
+    stockNeedsV16: "書き込みはしていません。この FM-1 の起動部は V16 のものです（Windjammer の前は V16 でした）。戻せるのは V16 です。M-VAVE の現在の FM-1.fwsc（V16）を選んでください。",
+    stockNeedsV15: "書き込みはしていません。この FM-1 の起動部は V15 のものです（Windjammer の前は V15 でした）。戻せるのは V15 です。M-VAVE の fm1_open リポジトリ（sdk/firmware）の FM-1_015.fwsc を選んでください。その後 M-VAVE の M-UPGRADE で V16 にできます。",
+    stockSmkHead: "書き込みはしていません。Windjammer はそのまま使えます。このキーボードの起動部は V016 のものではありません（別の版で出荷されたか、Windjammer の前のファームウェアが書き換えました）。そのため V016 には戻せません。Windjammer が動いている間は、M-VAVE のアップデーターでも同じ確認で止まります。Windjammer の前に何が入っていたかを、Windjammer の GitHub で教えてください。",
     backup: "全体バックアップ保存中 ", stockError: "公式ファイルを確認できません: ",
     nomidi: "このブラウザでは使えません。Chrome か Edge で開いてください。", loadfail: "読み込めませんでした: ",
     start: "開始します", verify: "確認中", loader: "書き込みモードに切り替え中", write: "書き込み中",
@@ -103,8 +103,8 @@ const TEXT = {
     denied: "MIDI（SysEx）の使用が許可されませんでした。アドレスバーのサイト設定で MIDI を許可して、もう一度押してください。",
     notfound: "FM-1 / SMK-37 が見つかりません。USB ケーブル（データ通信用か）を確かめ、MIDI を使う他のアプリを閉じてから、もう一度押してください。",
     model: "接続されている機器は、このファイルの機種ではありません。",
-    nopkg: "この機器向けの Skiff はありません。機器の報告: ",
-    needV016: "この SMK-37 は V016 より古い M-VAVE 公式ファームウェアです。先に M-VAVE のアップデーター（M-UPGRADE）で V016 に更新してから、Skiff をインストールしてください。機器の報告: ",
+    nopkg: "この機器向けの Windjammer はありません。機器の報告: ",
+    needV016: "この SMK-37 は V016 より古い M-VAVE 公式ファームウェアです。先に M-VAVE のアップデーター（M-UPGRADE）で V016 に更新してから、Windjammer をインストールしてください。機器の報告: ",
     lost: "USB の接続が切れました。挿し直してもう一度押してください。",
     noloader: "書き込みモードの機器が見つかりません。USB をハブや USB 共有ソフトを通さずパソコンに直接挿し直して、もう一度押してください（終わるまで書き込みモードのままです）。",
     noreturn: "機器が戻ってきません。電源を入れ直してください。",
@@ -118,31 +118,31 @@ const TEXT = {
     warn: "Keep it plugged in and switched on while it writes. If the cable or the power is cut, it stays in update mode: plug it back in (or switch it on) and the install carries on.",
     install: "Install", other: "日本語",
     editor: "Editor (after installing: edit sounds and sequences from the computer)",
-    learn: "Learn Skiff (the manual, with a video for every chapter)",
+    learn: "Upstream Skiff manual (with chapter videos)",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
     brick: "If an install fails on an FM-1 and it no longer starts, recovering it needs a Transporter:",
-    smk: "The SMK-37 Pro is new to Skiff. Before installing, read about the backup and the way back to stock:",
-    beta: "Skiff is custom firmware; please report problems on GitHub. The author accepts no responsibility if your keyboard is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
-    back: "Get the official firmware from M-VAVE (FM-1: the version it had before Skiff, V15 or V16; SMK-37 Pro: V016) and select the unmodified FM-1.fwsc or SMK-37_Pro_016.fwsc. M-VAVE's download page now has V16; V15 is in M-VAVE's fm1_open repository (sdk/firmware/FM-1_015.fwsc). The browser validates it locally; it is not sent to a server.",
+    smk: "The SMK-37 Pro is new to Windjammer. Before installing, read about the backup and the way back to stock:",
+    beta: "Windjammer is custom firmware; please report problems on GitHub. The author accepts no responsibility if your keyboard is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
+    back: "Get the official firmware from M-VAVE (FM-1: the version it had before Windjammer, V15 or V16; SMK-37 Pro: V016) and select the unmodified FM-1.fwsc or SMK-37_Pro_016.fwsc. M-VAVE's download page now has V16; V15 is in M-VAVE's fm1_open repository (sdk/firmware/FM-1_015.fwsc). The browser validates it locally; it is not sent to a server.",
     stockTitle: "Return to the official firmware", stockFile: "Official FM-1.fwsc (V15 or V16) or SMK-37_Pro_016.fwsc", stockGo: "Back up and return to the official firmware",
-    stockBackup: "Current music, saved music, sound banks, samples and settings are saved first. Older firmware needs a Skiff update for complete backups. To restore an archive later, reinstall Skiff and use the editor.",
+    stockBackup: "Current music, saved music, sound banks, samples and settings are saved first. Older firmware may require an update for complete backups. To restore an archive later, reinstall Windjammer and use the editor.",
     stockRecovery: "Resume an interrupted update: I already saved a complete backup to this computer",
-    stockValid: "Official firmware verified: ", stockConfirm: "Has the complete backup file been saved to this computer? Continue to return to the official firmware. The official firmware cannot open Skiff music.",
+    stockValid: "Official firmware verified: ", stockConfirm: "Has the complete backup file been saved to this computer? Continue to return to the official firmware. The official firmware cannot open Windjammer music.",
     stockNeedBackup: "An update loader cannot export a backup. Only select resume if you already saved a complete backup.",
-    stockUnsupported: "This firmware cannot make a complete Skiff backup. An older Skiff: install the current Skiff first. Another firmware: return with M-VAVE's updater.",
+    stockUnsupported: "This firmware cannot make a complete backup. If it runs an older Skiff release, update it first. Another firmware: return with M-VAVE's updater.",
     stockIsStock: "This keyboard already runs that official firmware.",
-    stockNotSkiff: "This keyboard is not running Skiff, so there is no Skiff music to back up. To return from another firmware, use M-VAVE's updater. It reports: ",
-    saved20: "Skiff 2.0 opens nothing that firmware before it saves: a complete backup of this unit was saved to this computer first (Skiff-backup-....json). It is the way back: install your firmware of now, then restore it in the editor. Install Skiff 2.0?",
-    converting: "Converting what the firmware before saved, for 2.0 ",
-    converted: "Done. What the firmware before saved was converted for 2.0 (the list below).",
-    asIs: "Done. Everything this unit had opens in 2.0 as it is.",
+    stockNotSkiff: "The keyboard did not answer the backup query. To return from another firmware, use M-VAVE's updater. It reports: ",
+    saved20: "Some data from older firmware may need conversion. The complete backup is on this computer (Windjammer-backup-....json). To roll back, reinstall the previous firmware and restore the backup in the editor. Install Windjammer?",
+    converting: "Converting what the firmware before saved, for Windjammer ",
+    converted: "Done. What the firmware before saved was converted for Windjammer (the list below).",
+    asIs: "Done. Everything this unit had opens in Windjammer as it is.",
     convertedPart: "Done, but some of what the firmware before saved stays as it was (the list below): the unit shows it as OLD FORMAT. A project no free pattern could take converts once you free some (SAVE > PATTERNS), take a backup in the editor and restore it.",
     convertFailed: "Installed, but converting what the firmware before saved failed: restore the saved backup in the editor, which converts it. ",
     stockWrongModel: "The selected file is for another model than the connected keyboard.",
-    stockSkiffOld: "Nothing was written. This Skiff can't take that official version yet: install the current Skiff first, then return to the official firmware.",
-    stockNeedsV16: "Nothing was written. This FM-1's start-up part is V16's (it ran V16 before Skiff), so its way back is V16: select M-VAVE's current FM-1.fwsc (V16).",
-    stockNeedsV15: "Nothing was written. This FM-1's start-up part is V15's (it ran V15 before Skiff), so its way back is V15: select FM-1_015.fwsc from M-VAVE's fm1_open repository (sdk/firmware). M-VAVE's M-UPGRADE can take it to V16 afterwards.",
-    stockSmkHead: "Nothing was written, and Skiff runs as before. This keyboard's start-up part is not V016's (it came with another, or a firmware before Skiff rewrote it), so V016 can't go back on it; while Skiff runs, M-VAVE's own updaters stop at the same check. Please tell us on Skiff's GitHub what the keyboard ran before Skiff.",
+    stockSkiffOld: "Nothing was written. The current firmware cannot restore that official version: install the current Windjammer first, then return to the official firmware.",
+    stockNeedsV16: "Nothing was written. This FM-1's start-up part is V16's (it ran V16 before Windjammer), so its way back is V16: select M-VAVE's current FM-1.fwsc (V16).",
+    stockNeedsV15: "Nothing was written. This FM-1's start-up part is V15's (it ran V15 before Windjammer), so its way back is V15: select FM-1_015.fwsc from M-VAVE's fm1_open repository (sdk/firmware). M-VAVE's M-UPGRADE can take it to V16 afterwards.",
+    stockSmkHead: "Nothing was written, and Windjammer runs as before. This keyboard's start-up part is not V016's (it came with another, or a firmware before Windjammer rewrote it), so V016 can't go back on it; while Windjammer runs, M-VAVE's own updaters stop at the same check. Please tell us on Windjammer's GitHub what the keyboard ran before Windjammer.",
     backup: "Saving complete backup ", stockError: "Cannot validate official firmware: ",
     nomidi: "This browser cannot do it. Open the page in Chrome or Edge.", loadfail: "Could not load: ",
     start: "Starting", verify: "Verifying", loader: "Switching to update mode", write: "Writing",
@@ -153,8 +153,8 @@ const TEXT = {
     denied: "MIDI (SysEx) access was not allowed. Allow MIDI in the site settings (address bar) and press Install again.",
     notfound: "No FM-1 or SMK-37 found. Check the USB cable (a data cable), close other apps that use MIDI, and press Install again.",
     model: "The connected keyboard is not the model this file is for.",
-    nopkg: "There is no Skiff for this keyboard. It reports: ",
-    needV016: "This SMK-37 runs M-VAVE's firmware older than V016. Update it to V016 with M-VAVE's own updater (M-UPGRADE) first, then install Skiff. It reports: ",
+    nopkg: "There is no Windjammer for this keyboard. It reports: ",
+    needV016: "This SMK-37 runs M-VAVE's firmware older than V016. Update it to V016 with M-VAVE's own updater (M-UPGRADE) first, then install Windjammer. It reports: ",
     lost: "The USB connection was lost. Replug it and press Install again.",
     noloader: "The keyboard in update mode was not found. Replug the USB cable straight into the computer (not through a hub or USB-sharing software) and press Install again (it stays in update mode until it is finished).",
     noreturn: "The keyboard did not come back. Power-cycle it.",
@@ -188,7 +188,7 @@ const lockInstaller = (on) => { writing = on; $("go").disabled = on || !navigato
 window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
 
 if (!navigator.requestMIDIAccess) sayK("nomidi");
-else { say(`Skiff ${meta.version}`); $("go").disabled = false; }
+else { say(`Windjammer ${meta.version}`); $("go").disabled = false; }
 
 async function imageFor(entry) {
   if (images.has(entry.product)) return images.get(entry.product);
@@ -255,7 +255,7 @@ $("stock-file").addEventListener("change", async () => {
 });
 function saveArchive(archive) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], {type:"application/json"}));
-  const a = document.createElement("a"); a.href = url; a.download = `Skiff-backup-${new Date().toISOString().slice(0,10)}.json`;
+  const a = document.createElement("a"); a.href = url; a.download = `Windjammer-backup-${new Date().toISOString().slice(0,10)}.json`;
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 // ((Skiff 2.0, Tier B: design/TIER_B.md 10) installing 2.0 over firmware before it that answers complete backups (Skiff,
@@ -331,7 +331,7 @@ $("stock-go").addEventListener("click", async () => {
       if (!sameModel(device.id.model, model)) { sayK("stockWrongModel"); return; }
       if (device.id.text === selected.product) { sayK("stockIsStock"); return; }   // (#23: it is official already)
       link = new BackupConnection(input, output);
-      let reply;   // every Skiff answers INFO: no answer, no Skiff (#23 read "Backup timed out")
+      let reply;   // Compatible firmware answers INFO before backup.
       try { reply = await link.request([1,[]]); }
       catch (e) { if (e.code !== "timeout") throw e; sayK("stockNotSkiff", device.id.text); return; }
       const info = archiveInfo(reply);

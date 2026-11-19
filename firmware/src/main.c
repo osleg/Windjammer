@@ -15,6 +15,7 @@ extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[], 
  * The USB audio stream cannot wait for the render (one packet per 1 ms frame, a render takes up to
  * ~5 ms): uac_service also runs nested. It touches only EP4 (INDEX is set on every access) and the
  * consumer side of the audio ring, and usb_poll never runs nested, so the two never interleave.
+ * Direct bulk EP3 is serviced at 10 kHz here, including while nested in a render.
  * (2.2) Nor can MIDI OUT, which leaves as its audio plays (usb.c mo): ep1_tx also runs nested, as uac_service (EP1,
  * INDEX set; the consumer side of its ring); mo.now is this tick for both */
 void fm1_timer5_irq(void)
@@ -23,8 +24,16 @@ void fm1_timer5_irq(void)
     uint32_t t0 = fm1_ticks(), usb_due = sub % 5u == 0u;
     fm1_timer5_ack();
     mo.now = t0;
+#if !FELUCCA_CONTROLLER
     felucca_dbg.timer_irqs++;
+#endif
     fm1_input_tick();
+#if FELUCCA_DIRECT_PCM
+    /* Bulk PCM needs 2.76 full packets/ms. A 2 kHz poll cannot drain it;
+     * this 10 kHz path also runs through long LCD draws and nested renders. */
+    if (direct.alt)
+        direct_service();
+#endif
 #if BOARD_SMK37
     mo_trs(t0);                                 /* ((2.2) the TRS jack's MIDI OUT: the events due, as USB's) */
     smk_uart_tx_tick();                         /* (the TRS jack's MIDI OUT: a byte once the last has gone) */
@@ -36,6 +45,9 @@ void fm1_timer5_irq(void)
         while (acc >= 1000u * FM1_TICKS_PER_US) {
             acc -= 1000u * FM1_TICKS_PER_US;
             fm1_ms++;
+#if FELUCCA_DIAG
+            cafa_diag_timeout();
+#endif
         }
     }
     if (usb_due)
@@ -47,14 +59,18 @@ void fm1_timer5_irq(void)
     if (++sub == 10u)
         sub = 0;
     if (felucca_dbg.in_audio) {
+#if !FELUCCA_CONTROLLER
         felucca_dbg.nested++;
+#endif
 #if FELUCCA_UAC
         if (usb_due)
             uac_service();
 #endif
         if (usb_due && usb.up && usb.config)
             ep1_tx();                           /* ((2.2) MIDI OUT as its audio plays, the render or not) */
-        t5_nested_ticks += fm1_ticks() - t0;
+#if !FELUCCA_CONTROLLER
+        t5_nested_ticks+=fm1_ticks()-t0;
+#endif
         return;
     }
     if (owed & 1u)
@@ -87,7 +103,7 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_audio_stop();
     scr_wake_now();                                   /* (MENU > SCREEN OFF: the panel on first) */
     lcd_fill(0, 0, 240, 240, UI_CRASH_BG);            /* fixed, outside the palettes */
-    draw_text_line(0, 8, 240, &AF_M, "SKIFF CRASH", UI_CRASH_INK, UI_CRASH_BG, 1);
+    draw_text_line(0, 8, 240, &AF_M, "WINDJAMMER CRASH", UI_CRASH_INK, UI_CRASH_BG, 1);
     hexs(b, c->vec);
     draw_text_line(10, 40, 220, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
     hexs(b, c->pc);
@@ -159,7 +175,9 @@ static void fm1_main(void)
     uint8_t c1_told = 0;                                /* (Skiff 1.3) CORE 2 FAILED said (and the setting cleared) */
 #endif
     persist_boot();
+#if !FELUCCA_CONTROLLER
     bank_boot();                                        /* (Skiff) the pattern bank (bank.c) */
+#endif
 #if FELUCCA_OTA
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
@@ -174,7 +192,9 @@ static void fm1_main(void)
         felucca_dbg.magic = DBG_MAGIC;
     }
     felucca_dbg.boots++;
+#if !FELUCCA_CONTROLLER
     felucca_dbg.max_us = 0;
+#endif
     felucca_dbg.in_audio = 0;                       /* .noinit: a reset inside the audio ISR left it set, and
                                                        TIMER5 would treat every tick as nested (no USB poll) */
     felucca_dbg.prev_stage = felucca_dbg.stage;     /* a WDT reset leaves the last breadcrumb here */
@@ -204,7 +224,13 @@ static void fm1_main(void)
         smk_trim_load(fm1_xip_ptr(SMK_TRIM_FLASH));
 #endif
     panel_init();
+    #if !FELUCCA_CONTROLLER
     felucca_init();
+    #else
+    ui.force=1;
+    cafa_audio_on=1;                /* silent USB return ISR from the first DMA half */
+    cafa_usb_return_on=0;          /* no host samples until a valid session selects audio */
+    #endif
 #if BOARD_SMK37
     smk_ui_boot();                            /* (MASTER where it was left, KEY VELOCITY: smk_ui.c) */
 #endif
@@ -251,14 +277,18 @@ static void fm1_main(void)
 #if FELUCCA_LEGACY
     proj_migrate(boot_clean);                 /* (Skiff phase 5) projects of before: SKF2, their tracks patterns */
 #endif
+#if !FELUCCA_CONTROLLER
     unit_g_adopt = ui_set_rev < 2u;           /* (Skiff U3, R8) the first boot: the session's CLOCK MIDI IN TUNE .. */
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
-    unit_g_boot();                            /* .. become the unit's; later the unit's are put back over it (ui.c) */
+    unit_g_boot();
+#endif                            /* .. become the unit's; later the unit's are put back over it (ui.c) */
     for (ms = 0; ms < 400u; ms += 10u) {      /* the splash; the pot followed (MIDI IN plays under it) */
         fm1_delay_ms(10);
         master_poll();
     }
+#if !FELUCCA_CONTROLLER
     kb_boot_hold = 0;
+#endif
     lcd_fill(0, 0, 240, 240, T_BG);
     scrn.idle = fm1_ms;                        /* (MENU > SCREEN OFF: from here) */
     if (clk320.state == CLK_REFUSED)           /* (Skiff) MENU > CPU CLOCK 320 MHZ not switched, then why */
@@ -300,7 +330,10 @@ static void fm1_main(void)
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
             if ((fm1_in.buttons & both) != both
 #if FELUCCA_CAFA
-                || cafa_audio_on || cafa_release_guard
+#if !FELUCCA_CONTROLLER
+                || cafa_audio_on
+#endif
+                || cafa_release_guard
 #endif
             ) {
                 if (ui.uboot) {
@@ -331,7 +364,9 @@ static void fm1_main(void)
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
+#if !FELUCCA_CONTROLLER
             panic_req = (1u << NTRK) - 1u;               /* every track (bit per track) */
+#endif
             scr_wake_now();                             /* (its progress on the screen) */
             if (flash_ok)
                 ota_session();                          /* returns only if nothing was committed */
@@ -362,10 +397,12 @@ static void fm1_main(void)
         smk_ui_frame();                               /* the SMK-37's own controls (smk_ui.c) */
 #endif
 #if FELUCCA_CAFA
-        if (!cafa_audio_on) {
+        if (FELUCCA_CONTROLLER ? (cafa.phase != 2 && wire6.phase != 2) : !cafa_audio_on) {
 #endif
         settings_poll();                              /* queued settings save: only while stopped */
+#if !FELUCCA_CONTROLLER
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
+#endif
 #if FELUCCA_CAFA
         }
 #endif

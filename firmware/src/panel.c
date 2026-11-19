@@ -159,7 +159,7 @@ static int settings_init(void)                 /* 1: no settings were kept (a ne
     }
     if (settings.magic != SETTINGS_MAGIC || settings.palette >= NPALETTES) {
         settings.magic = SETTINGS_MAGIC;
-        settings.palette = UI_SKIFF_INDEX;     /* Skiff's look (main.c: STYLE BLOCKS with it); Felucca's: GREY */
+        settings.palette = UI_WINDJAMMER_INDEX;     /* default look; Felucca used GREY */
         settings.lowcut = 0;
         settings.zoom = 0;                     /* (retired: the LEDS setting, settings_persist.c) */
         fresh = 1;

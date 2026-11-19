@@ -183,7 +183,7 @@ async function editorMock() {
   const names = [];
   for (let e = 0; e < info.nengines; e++) names.push(E.parse[E.CMD.NAMES](await rq(E.req.names(e))).names);
   let prefs = await E.readDevicePreferences(rq, info, names);
-  ok(info.uiCaps === 25 && prefs.palettes.length === 6 && prefs.palettes[0] === "SKIFF" && prefs.palettes[1] === "HI-CON" && prefs.palettes[2] === "PAPER" && prefs.palettes[3] === "CRYPT" && prefs.palettes[4] === "NEON" && prefs.palettes[5] === "QUARK",
+  ok(info.uiCaps === 25 && prefs.palettes.length === 6 && prefs.palettes[0] === "WINDJAMMER" && prefs.palettes[1] === "HI-CON" && prefs.palettes[2] === "PAPER" && prefs.palettes[3] === "CRYPT" && prefs.palettes[4] === "NEON" && prefs.palettes[5] === "QUARK",
      "editor: preference capabilities (palette, favorites, (#27) COLORS) and palette names");
   const pal = E.parse[E.CMD.UI_SET](await rq(E.req.uiSet(0, 2)));
   ok(pal.rc === 0 && pal.palette === 2, "editor: display preference 0 (palette) round trip");
@@ -381,7 +381,7 @@ async function editorMock() {
        E.buildSlot("two", [{ s, root: 64 }, { s, root: 60 }]).hdr.join() === two.hdr.join(),
        "samples: buildSlot keeps each sound's LEVEL / REV / DLY through its sort (the header the same)");
     let r = E.parse[E.CMD.SMP_MIX](await rq(E.req.smpMix(1)));
-    ok((info.skiff & 32) && r.slot === 1 && !r.rc && r.keys.length === 1 && r.mix.length === 1 && r.mix[0].join() === "127,0,0",
+    ok((info.workflowCaps & 32) && r.slot === 1 && !r.rc && r.keys.length === 1 && r.mix.length === 1 && r.mix[0].join() === "127,0,0",
        "editor: SMP_MIX reads a slot's sounds (as uploaded: 127, 0, 0)");
     r = E.parse[E.CMD.SMP_MIX](await rq(E.req.smpMix(1, [[100, 20, 30]])));
     const back = E.parse[E.CMD.SMP_MIX](await rq(E.req.smpMix(1)));
@@ -970,7 +970,7 @@ async function editorStepExtras() {
 async function editorStepTies() {
   const C = E.CMD, x = { time: 0, flags: 0, vel: 100, chance: 100, ratchet: 1, flam: 0, cond: 0, nudge: 0 };
   const { rq, done } = attachMock({});
-  ok(E.parse[C.INFO](await rq(E.req.info())).skiff === 127, "ties: INFO 57 01 127 (bit 6)");
+  ok(E.parse[C.INFO](await rq(E.req.info())).workflowCaps === 127, "ties: INFO 57 01 127 (bit 6)");
   let s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 15 })));
   ok(s.ties === 3 && E.parse[C.STEP_GET](await rq(E.req.stepGet(6))).ties === 3, "ties: STEP_SET writes them, to the step's 2 notes");
   s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0] })));
@@ -993,7 +993,7 @@ async function editorStepTies() {
   const o = attachMock({ noTies: true });
   const oi = E.parse[C.INFO](await o.rq(E.req.info()));
   s = E.parse[C.STEP_SET](await o.rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 1 })));
-  ok(oi.skiff === 63 && s.ties === 0, "ties: firmware without them (57 01 63): none");
+  ok(oi.workflowCaps === 63 && s.ties === 0, "ties: firmware without them (57 01 63): none");
   o.done();
 }
 
@@ -1025,7 +1025,7 @@ async function editorTransportNames() {
   const C = E.CMD;
   const { rq, done } = attachMock({});
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok((info.skiff & 3) === 3 && info.kitLanes === 8, "transport: INFO 57 01 caps (TRANSPORT, PROJ_NAME) after the kit");
+  ok((info.workflowCaps & 3) === 3 && info.kitLanes === 8, "transport: INFO 57 01 caps (TRANSPORT, PROJ_NAME) after the kit");
   let x = E.parse[C.TRANSPORT](await rq(E.req.transport()));
   ok(!x.playing && !x.rec && !x.pending, "transport: the state (stopped, none armed)");
   ok(E.parse[C.TRANSPORT](await rq(E.req.transport(1))).playing && !E.parse[C.TRANSPORT](await rq(E.req.transport(2))).playing,
@@ -1047,7 +1047,7 @@ async function editorTransportNames() {
   ok(String.fromCharCode(...a.slice(2, -1)) === "ABCDEFGHIJKL" && a[a.length - 1] === 0, "projects: a name cleaned (upper case, printable, 12)");
   done();
   const o = attachMock({ noProj: true });
-  ok(!E.parse[C.INFO](await o.rq(E.req.info())).skiff, "projects: firmware without them (no 57): the editor shows none");
+  ok(!E.parse[C.INFO](await o.rq(E.req.info())).workflowCaps, "projects: firmware without them (no 57): the editor shows none");
   o.done();
 }
 
@@ -1058,7 +1058,7 @@ async function editorLists() {
   const C = E.CMD;
   const { rq, done } = attachMock({});
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.skiff === 127, "song: INFO 57 01 127 (POOL, LIST, PERFORM, (#21) SMP_MIX, (2.0) ties too)");
+  ok(info.workflowCaps === 127, "song: INFO 57 01 127 (POOL, LIST, PERFORM, (#21) SMP_MIX, (2.0) ties too)");
   let q = E.parse[C.POOL](await rq(E.req.pool()));
   ok(q.pats.length === 64 && q.pats[0].len === 16 && q.pats[0].refs === 1 && q.pats[3].len === 8 && !q.pats[3].refs && !q.pats[63].len,
      "song: POOL: each pattern's LEN and uses");
@@ -1102,7 +1102,7 @@ async function editorLists() {
      E.req.perform(4)[1].join() === "4" && E.req.pool()[1].length === 0 && E.req.pool(7)[1].join() === "1,7", "song: the requests' bytes");
   done();
   const o = attachMock({ noSong: true });
-  ok(E.parse[C.INFO](await o.rq(E.req.info())).skiff === 3, "song: firmware without them (57 01 03): no Song tab");
+  ok(E.parse[C.INFO](await o.rq(E.req.info())).workflowCaps === 3, "song: firmware without them (57 01 03): no Song tab");
   o.done();
 }
 
@@ -1228,7 +1228,7 @@ async function editorSong2() {
   const o = attachMock({ noSong2: true });
   const info = E.parse[C.INFO](await o.rq(E.req.info()));
   const err = await o.rq(L2(0, 0, 0), { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
-  ok(info.skiff === 127 && !info.song2 && /^timeout/.test(err || ""), "song2: firmware before (no 58 01): song2 0, LIST2 unanswered");
+  ok(info.workflowCaps === 127 && !info.song2 && /^timeout/.test(err || ""), "song2: firmware before (no 58 01): song2 0, LIST2 unanswered");
   o.done();
 }
 

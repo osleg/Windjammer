@@ -260,8 +260,8 @@ static const engine_t ENG_DIGITAL = {
     .edit = FM4_EDIT("ALG", "R2", "R3", "R4", "IDX", "MDEC", "FB", F_ENUM, F_TIME, N_FMALG, N_RATIO),
     .presets = DIGITAL_PRESETS,
     .npresets = NELEM(DIGITAL_PRESETS),
-    .note_on = digital_note_on,
-    .render = digital_render,
+    .note_on = ENG_AUDIO_CALLBACK(digital_note_on),
+    .render = ENG_AUDIO_CALLBACK(digital_render),
     .knob = {P_E4, P_E5, P_E6, P_REL},
     .keep = 0xE0,                /* the feedback history and op 4's phase; the modulator envelope restarts */
 };

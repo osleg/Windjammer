@@ -11,7 +11,7 @@ hints use, tools/gen_aa_keycaps.py) and what the control does. Hold actions carr
                        [--jpg OUT.jpg]
   gen_panel_diagram.py --strip OUT.svg [--pitch-mm 9.8]
 
---screen: a render of the screen (tests/ui_render.c's SKIFF_home.ppm), drawn in the panel's screen. Every
+--screen: a render of the screen (tests/ui_render.c's WINDJAMMER_home.ppm), drawn in the panel's screen. Every
 control's box (CTRL) was measured on a 1750 x 1050 photo of the panel, in its pixels, and the panel is drawn
 from them; each band is its controls' boxes and a small margin. Everything else is in one table (GROUPS),
 English and Japanese side by side.
@@ -132,7 +132,7 @@ GROUPS = [
               None),
          ]),
 ]
-TITLE = ("FM-1 controls in Skiff", "Skiff の FM-1 操作")   # the SVG's <title> only
+TITLE = ("FM-1 controls in Windjammer", "Windjammer の FM-1 操作")   # the SVG's <title> only
 
 # Every control's box on the photo (its pixels), measured on it: the knobs are the part darker than the
 # panel around them (knob and shadow, the printed names excluded), the buttons and OCT-/+ their bright caps
@@ -543,7 +543,7 @@ def strip(path, pitch):
                          "middle", fill="#000", reg=False)
 
     out.append(f'<rect width="{pw}" height="{ph}" fill="#fff"/>')
-    text("Skiff key strip: the FM-1's keys F3 to G5", 20, 22, 6, 600, fill="#000", reg=False)
+    text("Windjammer key strip: the FM-1's keys F3 to G5", 20, 22, 6, 600, fill="#000", reg=False)
     text(f"Print at 100 %: the bar must measure 100 mm. White keys {pitch:g} mm apart (--pitch-mm). Cut along the "
          "frames.", 20, 30, 3.6, 450, fill="#000", reg=False)
     rect(20, 36, 100, 2, 0, fill="#000")
@@ -562,7 +562,7 @@ def strip(path, pitch):
     text("White keys: notes from F3; on STEP with REC and the drum grid, steps 1–16; PERFORM's entries A–P and "
          "scenes 1–16.", 20, 132, 3.4, 450, fill="#000", reg=False)
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{pw}mm" height="{ph}mm" viewBox="0 0 {pw} {ph}">'
-           f'<title>Skiff key strip</title>\n<defs>{"".join(defs)}</defs>\n' + "\n".join(out) + "\n</svg>\n")
+           f'<title>Windjammer key strip</title>\n<defs>{"".join(defs)}</defs>\n' + "\n".join(out) + "\n</svg>\n")
     Path(path).write_text(svg, encoding="utf-8")
     print(f"{path}: A4, strips {ln:.1f} mm long")
 
@@ -570,7 +570,7 @@ def strip(path, pitch):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("svg", nargs="?")
-    ap.add_argument("--screen", help="a render of the screen, drawn in the panel's (SKIFF_home.ppm)")
+    ap.add_argument("--screen", help="a render of the screen, drawn in the panel's (WINDJAMMER_home.ppm)")
     ap.add_argument("--strip", help="write the key strip (SVG, mm) instead")
     ap.add_argument("--pitch-mm", type=float, default=9.8, help="the key strip: the white keys' centres apart")
     ap.add_argument("--lang", choices=("en", "ja"), default="en")

@@ -294,8 +294,8 @@ static const engine_t ENG_WHEEL = {
     },
     .presets = WHEEL_PRESETS,
     .npresets = NELEM(WHEEL_PRESETS),
-    .note_on = wheel_note_on,
-    .render = wheel_render,
+    .note_on = ENG_AUDIO_CALLBACK(wheel_note_on),
+    .render = ENG_AUDIO_CALLBACK(wheel_render),
     .knob = {P_E0, P_E4, P_E6, P_E7},
-    .block = wheel_block,
+    .block = ENG_AUDIO_CALLBACK(wheel_block),
 };

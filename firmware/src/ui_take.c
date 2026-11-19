@@ -137,21 +137,52 @@ static int32_t take_box_key(int32_t x, uint32_t id, const char *w, int on)
 }
 static void take_box_draw(void)
 {
-    char d[2] = {(char)('1' + take_box.trk), 0};
+    char d[8];
+    uint32_t part = take_box.trk;
+#if FELUCCA_CAFA
+    if (cafa_native_profile_view && (cafa_native_profile_view[6] == 65u || cafa_native_profile_view[6] == 66u))
+        part = cafa_native_u14(cafa_native_profile_view + 13u);
+#endif
+    fmt_int(d, (int32_t)part + 1);
+    int32_t badge = part < 9u ? 16 : 32;
+    uint16_t color = T_TRK(part % UI_NTRK);
     GFX_HOOK_OVERLAY(TB_X - 1, TB_Y - 1, TB_X + TB_W + 1, TB_Y + TB_H + 1);   /* (the lanes' words under it: hidden) */
     cv_rect(TB_X - 1, TB_Y - 1, TB_W + 2, TB_H + 2, T_BG);
     cv_rect(TB_X, TB_Y, TB_W, TB_H, T_TEXT);
-    cv_rect(TB_X + 10, TB_Y + 9, 16, 16, T_TRK(take_box.trk));   /* the track: its number on its colour */
-    GFX_HOOK_ALIGN(TB_X + 10, TB_Y + 9, TB_X + 26, TB_Y + 25, AL_HV, "take box track number");
-    cv_text_in(TB_X + 10, TB_Y + 9 + CAP_IN(M, 16), 16, &AF_M, d, T_INK, T_TRK(take_box.trk));
+    cv_rect(TB_X + 10, TB_Y + 9, badge, 16, color);   /* the track: its number on its colour */
+    GFX_HOOK_ALIGN(TB_X + 10, TB_Y + 9, TB_X + 10 + badge, TB_Y + 25, AL_HV, "take box track number");
+    cv_text_in(TB_X + 10, TB_Y + 9 + CAP_IN(M, 16), badge, &AF_M, d, T_INK, color);
     GFX_HOOK_ALIGN(0, TB_Y + 9, 0, TB_Y + 25, AL_V, "take box title on its number's line");
-    cv_text_fit(TB_X + 33, TB_Y + 9 + CAP_IN(M, 16), &AF_M, take_box.title, T_INK, T_TEXT, TB_W - 43);
+    cv_text_fit(TB_X + 17 + badge, TB_Y + 9 + CAP_IN(M, 16), &AF_M, take_box.title, T_INK, T_TEXT, TB_W - 27 - badge);
     {                                                 /* ("14 notes, 3 knob moves", as the mockup's) */
         char ln[sizeof take_box.line];
         str_cpy(ln, take_box.line, sizeof ln);
         lower_words(ln);
         cv_text_fit(TB_X + 10, TB_Y + 31, &AF_S, ln, T_INK, T_TEXT, TB_W - 20);
     }
+#if FELUCCA_CAFA
+    if (cafa_native_profile_view) {
+        uint32_t box_len;
+        const uint8_t *box = cafa_native_section(cafa_native_profile_view,
+                                                 cafa_native_profile_len,
+                                                 CAFA_NATIVE_TRANSIENT_BOX, &box_len);
+        if (box && box_len == 67u) {
+            if (box[1])
+                take_box_key(take_box_key(TB_X + 10, KC_OCTDN, "BACK", box[66] & 1u) + 14,
+                             KC_OCTUP, "REDO", box[66] & 2u);
+            else cv_text_on(TB_X + 10, TB_Y + 49, &AF_S, "HOLD SAVE: UNDO", T_INK, T_TEXT);
+            return;
+        }
+        const uint8_t *r = cafa_nv_row(0);
+        char back[25], redo[25];
+        cafa_nv_line(back, sizeof back, 2); cafa_nv_line(redo, sizeof redo, 3);
+        if (cafa_native_profile_view[6] == 65u)
+            take_box_key(take_box_key(TB_X + 10, KC_OCTDN, back, r && (r[40] & 2u)) + 14,
+                         KC_OCTUP, redo, r && (r[40] & 1u));
+        else cv_text_on(TB_X + 10, TB_Y + 49, &AF_S, back, T_INK, T_TEXT);
+        return;
+    }
+#endif
     if (take_box.kind)                                /* the undo window (ui.c undo_step): further back, or redo */
         take_box_key(take_box_key(TB_X + 10, KC_OCTDN, "BACK", undo_back < undo_n) + 14, KC_OCTUP, "REDO", undo_back);
     else                                              /* the take's undo: SAVE held (the mockup's words) */
@@ -588,3 +619,35 @@ static void take_commit(uint32_t k)
     ui_say(b, take_lost[k % NTRK] > from ? " PARTIAL" : full ? " AUTO FULL" : "");
     str_cpy(ui.msg2, "HOLD [SAVE]: UNDO", sizeof ui.msg2);
 }
+
+#if FELUCCA_CAFA
+static void cafa_native_transient_draw(void)
+{
+    uint32_t len;
+    const uint8_t *box = cafa_native_section(cafa_native_profile_view,
+                                             cafa_native_profile_len,
+                                             CAFA_NATIVE_TRANSIENT_BOX, &len);
+    if (!box || len != 67u || (int32_t)graph_h() < TB_Y + TB_H + 1) return;
+    __typeof__(take_box) keep = take_box;
+    char title[25], line[41];
+    take_box.trk = box[0];
+    take_box.kind = box[1];
+    cafa_native_text(title, box + 2u, 24u);
+    cafa_native_text(line, box + 26u, 40u);
+    str_cpy(take_box.title, title, sizeof take_box.title);
+    str_cpy(take_box.line, line, sizeof take_box.line);
+    take_box_draw();
+    take_box = keep;
+}
+static void cafa_native_take_draw(void)
+{
+    __typeof__(take_box) keep = take_box;
+    take_box.trk = (uint8_t)(cafa_native_u14(cafa_native_profile_view + 13) % UI_NTRK);
+    take_box.kind = cafa_native_profile_view[6] == 65u;
+    cafa_nv_line(take_box.title, sizeof take_box.title, 0);
+    cafa_nv_line(take_box.line, sizeof take_box.line, 1);
+    cv_begin(240, H_GRAPH + foot_less(), T_BG);
+    take_box_draw(); cv_blit(0, Y_GRAPH);
+    take_box = keep;
+}
+#endif

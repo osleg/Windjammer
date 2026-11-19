@@ -298,6 +298,9 @@ static uint32_t name_leds(uint32_t *br)
 #define NM_CX(i) (12 + 18 * (int32_t)(i))              /* cell i: 18 x 22 at y 18 of the card */
 static void nm_title(char *b)
 {
+#if FELUCCA_CAFA
+    if (cafa_native_profile_view) { cafa_native_text(b, cafa_native_profile_view + 33, 23); return; }
+#endif
     str_cpy(b, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE ? "SAVE " : "NAME ", 8);
     if (nm.kind <= NK_USER_RENAME)
         up_slot_label(b + 5, nm.slot);
@@ -395,7 +398,11 @@ static void nm_draw_panel(void)
 static void nm_draw_foot(void)
 {
     khint_t a[2], b[3];
-    int ok = !transport_busy();
+    int ok =
+#if FELUCCA_CAFA
+        cafa_native_profile_view ? !(cafa_native_profile_view[1] & 4u) :
+#endif
+        !transport_busy();
     a[0] = (khint_t){KC_OCTUP, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE ? "SAVE" : "RENAME"};
     a[1] = (khint_t){KC_OCTDN, "CANCEL"};
     b[0] = (khint_t){KC_K1, "MOVE"};
@@ -431,3 +438,24 @@ static void name_draw(void)
         ui.bpm_t--;
     ui.force = 0;
 }
+
+#if FELUCCA_CAFA
+static void cafa_native_name_draw(void)
+{
+    __typeof__(nm) keep = nm;
+    const uint8_t *row = cafa_nv_row(0);
+    memset(&nm, 0, sizeof nm);
+    nm.kind = NK_USER_SAVE;
+    cafa_nv_line(nm.s, sizeof nm.s, 0);
+    cafa_nv_line(nm.ph, sizeof nm.ph, 1);
+    nm.len = (uint8_t)str_len(nm.s);
+    nm.cur = (uint8_t)clamp(cafa_native_u14(cafa_native_profile_view + 20), 0, NM_LEN);
+    if (row) {
+        nm.num = cafa_native_u14(row + 41) != 0u;
+        nm.key = (uint8_t)clamp(cafa_native_u14(row + 43), 0, 16);
+        nm.tap = (uint8_t)clamp(cafa_native_u14(row + 45), 0, 7);
+    }
+    nm_draw_field(); nm_draw_panel(); nm_draw_foot();
+    nm = keep;
+}
+#endif

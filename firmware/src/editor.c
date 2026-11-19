@@ -551,13 +551,14 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             0x43, 1, TC_COUNT,                          /* (Skiff W1) a step's FLAM, COND (TC_COUNT of them), NUDGE
                                                          * after its ratchet */
             0x4B, 1, 8,                                 /* (Skiff W3) the DRUM-X kit: KIT_GET, KIT_PUT, its 8 lanes */
-            0x57, 1, ED_SKIFF_CAPS,                     /* (Skiff W3) TRANSPORT, PROJ_NAME (editor_project.c) */
+            0x57, 1, ED_WINDJAMMER_CAPS,                     /* (Skiff W3) TRANSPORT, PROJ_NAME (editor_project.c) */
             0x49, 1, P_COUNT & 127u, P_COUNT >> 7, P_E0 & 127u, P_E0 >> 7,   /* (Skiff 1.3) wide ids: P_COUNT and
                                          * P_E0 in two bytes; a track id from 128 on as scope 2 (ED_TID), a motion
                                          * record's from 128 on with bit 6 of its step byte */
             0x58, 1, ED_SONG2};                         /* (2.0) the song's LIST2, NEW, COPY+, CHAIN, ONCE, the pool's
                                                          * EMPTY, CLEAR UNUSED (editor_song.c; last: an editor before
                                                          * reads up to 49 01 only) */
+        /* Keep the version prefix expected by existing editor and installer clients. */
         ed_str("FELUCCA " FELUCCA_VERSION, 24);
         ed_b(NENGINES);
         ed_b(P_COUNT > 127u ? 127u : P_COUNT);            /* ((1.3) more: INFO 49 01) */
@@ -977,14 +978,21 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
 }
 
 /* main loop: editor frames first; anything else stays for ota_service() */
+#if FELUCCA_CAFA
+static void cafa_part_ready(void);
+#endif
 static void ed_service(void)
 {
     const uint8_t *p;
     uint32_t n;
 #if FELUCCA_CAFA
+#if !FELUCCA_CONTROLLER
     if (!cafa_audio_on) ed_sync();
+#endif
+    cafa_part_ready();
     if (!ota_frame_get(&p,&n)) return;
-    if (cafa_frame(p,n) || cafa_audio_on) { ota_frame_done(); return; }
+    if (cafa_frame(p,n)) { ota_frame_done(); cafa_part_ready(); return; }
+    if (FELUCCA_CONTROLLER || cafa_audio_on) return; /* OTA owns non-companion frames, including identity */
     if (n<4u || p[0]!=ED_HDR0 || p[1]!=ED_HDR1 || p[2]!=ED_HDR2) return;
 #else
     ed_sync();                                             /* v2 pushes (while watched) */

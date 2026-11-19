@@ -152,8 +152,12 @@ static void dx_row_bar(int32_t x, int32_t w, int32_t y, int32_t rh, uint32_t v, 
 }
 static void graph_dx(const track_t *t, uint16_t c)
 {
-    const dx_lane_t *L = &dx_kit[dx_ui_lane & 7u];
-    uint32_t i, w = dx_ui_win % DX_NWIN, m = L->mode;
+    uint32_t remote = 0;
+#if FELUCCA_CAFA
+    remote = cafa_native_profile_view != 0;
+#endif
+    const dx_lane_t *L = remote ? 0 : &dx_kit[dx_ui_lane & 7u];
+    uint32_t i, w = remote ? 0u : dx_ui_win % DX_NWIN, m = remote ? 0u : L->mode;
     int32_t rh = ((int32_t)cv_h - 36) / (int32_t)DX_ROWS, y0 = 34, y, span;
     uint16_t band = ux_mix(cv_bg, c, 22);
     char b[40];
@@ -162,25 +166,48 @@ static void graph_dx(const track_t *t, uint16_t c)
         rh = 14;
     for (i = 0; i < 8u; i++) {                           /* the kit's sounds, the one edited in the track's colour */
         int32_t x = 9 + (int32_t)i * (DX_TW + 2);
-        int on = i == (dx_ui_lane & 7u);
+        int on = !remote && i == (dx_ui_lane & 7u);
+        const char *label = DX_LANE_ABBR[i];
+#if FELUCCA_CAFA
+        char rlabel[5];
+        if(remote) { const uint8_t *q=cafa_nv_cell(i);rlabel[0]=0;on=q&&(q[2]&2u);
+            if(q)cafa_native_text(rlabel,q+3,4);label=rlabel; }
+#endif
         uint16_t f = on ? c : T_RAISE;
         cv_rect(x, 4, DX_TW, 16, f);
         GFX_HOOK_ALIGN(x, 4, x + DX_TW, 20, AL_HV, "DRUM-X sound name centred in its tile");
-        cv_text_in(x, 4 + CAP_IN(S, 16), DX_TW, &AF_S, DX_LANE_ABBR[i], on ? T_INK : T_MID, f);
+        cv_text_in(x, 4 + CAP_IN(S, 16), DX_TW, &AF_S, label, on ? T_INK : T_MID, f);
     }
     GFX_HOOK_ALIGN(DX_AX, 22, DX_AX + DX_BW, 34, AL_HV, "DRUM-X sheet's A over its bars");
     cv_text_in(DX_AX, 22 + CAP_IN(S, 12), DX_BW, &AF_S, "A", T_MID, cv_bg);
     GFX_HOOK_ALIGN(DX_BX, 22, DX_BX + DX_BW, 34, AL_HV, "DRUM-X sheet's B over its bars");
     cv_text_in(DX_BX, 22 + CAP_IN(S, 12), DX_BW, &AF_S, "B", T_MID, cv_bg);
-    for (i = 0; i < DX_NROW[w]; i++) {                   /* the knobs' rows: a band, a mark */
+    for (i = 0; !remote && i < DX_NROW[w]; i++) {                   /* the knobs' rows: a band, a mark */
         y = y0 + (int32_t)(DX_ROW0[w] + i) * rh;
         cv_rect(3, y, 231, rh, band);
         cv_rect(3, y, 2, rh, c);
     }
     for (i = 0; i < DX_ROWS; i++) {
-        int on = i >= DX_ROW0[w] && i < DX_ROW0[w] + DX_NROW[w];
+        int on = !remote && i >= DX_ROW0[w] && i < DX_ROW0[w] + DX_NROW[w];
+#if FELUCCA_CAFA
+        const uint8_t *r=remote?cafa_nv_row(i):0;
+        if(remote)on=r&&(r[40]&1u);
+#endif
         uint16_t bg = on ? band : cv_bg;
         y = y0 + (int32_t)i * rh;
+#if FELUCCA_CAFA
+        if(remote) {
+            char label[17]={0},av[17]={0},bv[9]={0};
+            if(on){cv_rect(3,y,231,rh,band);cv_rect(3,y,2,rh,c);}
+            if(r){cafa_native_text(label,r,16);cafa_native_text(av,r+16,16);cafa_native_text(bv,r+32,8);}
+            cv_text_fit(10,y+CAP_IN(S,rh),&AF_S,label,on?T_TEXT:T_MID,bg,34);
+            if(i<6u) {
+                dx_row_bar(DX_AX,DX_BW,y,rh,r?cafa_native_u14(r+41)*127u/16383u:0u,c,bg,av);
+                dx_row_bar(DX_BX,DX_BW,y,rh,r?cafa_native_u14(r+43)*127u/16383u:0u,T_TEXT,bg,bv);
+            } else cv_text_fit(DX_AX,y+CAP_IN(S,rh),&AF_S,av,on?T_TEXT:T_MID,bg,180);
+            continue;
+        }
+#endif
         GFX_HOOK_ALIGN(0, y, 0, y + rh, AL_V, "DRUM-X sheet label on its row's middle");
         cv_text_on(10, y + CAP_IN(S, rh), &AF_S, i < DXP_N ? DX_VAL[i] : i == 5u ? "LEVEL" : "MODE", on ? T_TEXT : T_MID, bg);
         if (i < DXP_N) {                                 /* a value: A and B */
@@ -208,5 +235,11 @@ static void graph_dx(const track_t *t, uint16_t c)
     }
     span = (int32_t)DX_ROWS * rh;                        /* where the knobs are on the sheet */
     cv_rect(236, y0, 2, span, T_RAISE);
+#if FELUCCA_CAFA
+    if(remote) {
+        uint32_t selected=cafa_native_u14(cafa_native_profile_view+24);
+        if(selected<DX_ROWS)cv_rect(236,y0+(int32_t)selected*rh,2,rh,T_MID);
+    } else
+#endif
     cv_rect(236, y0 + (int32_t)DX_ROW0[w] * rh, 2, (int32_t)DX_NROW[w] * rh, T_MID);
 }

@@ -322,8 +322,8 @@ static const engine_t ENG_PHASE = {
     },
     .presets = PHASE_PRESETS,
     .npresets = NELEM(PHASE_PRESETS),
-    .note_on = phase_note_on,
-    .render = phase_render,
+    .note_on = ENG_AUDIO_CALLBACK(phase_note_on),
+    .render = ENG_AUDIO_CALLBACK(phase_render),
     .keep = 0xB0,                /* FOLD's DC blocker (1.5.5), (#41) the last DCW: a retrigger does not restart them */
     .knob = {P_E2, P_E3, P_E4, P_REL},
 };

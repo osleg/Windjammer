@@ -101,12 +101,17 @@
 #ifndef FM1_INPUT_NOW
 #define FM1_INPUT_NOW() fm1_ticks()   /* the press stats' clock (input_test.c: simulated) */
 #endif
+#ifndef FM1_DIAG_KEY_DOWNSCAN
+#define FM1_DIAG_KEY_DOWNSCAN(t) ((void)0)
+#endif
 #ifndef FM1_LED_US
 #define FM1_LED_US 40u           /* LED on-time per column (brightness vs scan rate) */
 #endif
 #define FM1_DEB_PRESS 2u          /* frames closed in a row: a press (a frame = 11 ticks, ~1.1 ms) */
 #define FM1_DEB_RELEASE 8u        /* frames open in a row: a release (~9 ms) */
-#define FM1_INPUT_LAT 1           /* the press latency stats below (seq.c, console `inp`) */
+#if !FELUCCA_CONTROLLER
+#define FM1_INPUT_LAT 1           /* the standalone press latency stats (seq.c, console `inp`) */
+#endif
 #define FM1_SETTLE_US 10u
 #ifndef FM1_LED_DIM_NS
 #define FM1_LED_DIM_NS 3200u      /* a dim LED's pulse per frame (ns; a lit one ~95 us): ~1/30 the brightness */
@@ -189,8 +194,9 @@ static uint8_t fm1_led_dim[FM1_NCOL];
 static uint8_t fm1_led_breath[FM1_NCOL];   /* breathing LEDs (see top): dark .. ~60 % of lit, in step */
 static uint8_t fm1_led_mid[FM1_NCOL];      /* a steady mid level (see top): lit 1 frame in FM1_LED_MID_N */
 
-/* scan diagnostics (console `inp`, read and cleared by the main loop): the gap between ticks
+/* Standalone scan diagnostics (console `inp`): the gap between ticks
  * = the on-time of the column lit in it, in TIMER4 ticks (24 MHz) */
+#if !FELUCCA_CONTROLLER
 #define FM1_GAP_BINS 8u                /* < 0.15, 0.3, 0.6, 1.2, 2.4, 4.8, 9.6 ms, longer */
 static volatile struct {
     uint32_t last, gap_max, gap_hist[FM1_GAP_BINS];
@@ -203,6 +209,7 @@ static volatile struct {
     uint32_t kb_n, kb_sum, kb_max, dac_sum, dac_max;
     uint32_t dim_n, dim_sum;     /* the dim pulses and their widths (TIMER4 ticks) */
 } fm1_in_stat;
+#endif
 
 static void fm1__led_lines(uint32_t rowmask)       /* row bit 1 PA9, 2 PA10, 3 PH6, 4 PH9 */
 {
@@ -296,19 +303,25 @@ static void fm1__key(uint32_t id, uint32_t closed)
         *c = 0;
         return;
     }
-    if (!on && note && *c == 0u)
+    if (!on && note && *c == 0u) {
         fm1_in.note_t0[id - 14u] = FM1_INPUT_NOW();
+        if (id == 14u) FM1_DIAG_KEY_DOWNSCAN(fm1_in.note_t0[0]);
+    }
     if (++*c < (on ? FM1_DEB_RELEASE : FM1_DEB_PRESS))
         return;
     *c = 0;
     if (note) {
         if (!on) {
+#if !FELUCCA_CONTROLLER
             uint32_t d = FM1_INPUT_NOW() - fm1_in.note_t0[id - 14u];
+#endif
             fm1_in.notes_pressed |= bit;
+#if !FELUCCA_CONTROLLER
             fm1_in_stat.press_n++;
             fm1_in_stat.press_sum += d;
             if (d > fm1_in_stat.press_max)
                 fm1_in_stat.press_max = d;
+#endif
         }
         fm1_in.notes ^= bit;
     } else {
@@ -377,14 +390,20 @@ static void fm1__frame(void)
         idx = (uint32_t)fm1_in.enc_prev[e] << 2 | cur;
         if ((0x4182u >> idx) & 1u) {
             (*sub)++;
+#if !FELUCCA_CONTROLLER
             fm1_in_stat.enc_moves[e]++;
+#endif
         } else if ((0x2814u >> idx) & 1u) {
             (*sub)--;
+#if !FELUCCA_CONTROLLER
             fm1_in_stat.enc_moves[e]++;
+#endif
         } else {                                   /* two states in one sample: a fast turn, the way it */
             int32_t d = *sub > 0 ? 1 : *sub < 0 ? -1 : /* was going (on the detent: a click of the last */
                         (uint32_t)(fm1_in.frames - fm1_in.enc_dfr[e]) <= FM1_ENC_GO ? fm1_in.enc_dir[e] : 0;
+#if !FELUCCA_CONTROLLER
             fm1_in_stat.enc_lost[e]++;             /* FM1_ENC_GO frames, else nothing) */
+#endif
             *sub = (int8_t)(*sub + 2 * d);
         }
         fm1_in.enc_prev[e] = (uint8_t)cur;
@@ -508,10 +527,13 @@ static int fm1_led_anim_on(void) { return fm1__an_f != 0u; }
 static void fm1_input_tick(void)
 {
     uint32_t p = fm1__tick_col, n = p + 1u == FM1_NCOL ? 0u : p + 1u;
+#if !FELUCCA_CONTROLLER
     uint32_t t0 = fm1_ticks(), g = t0 - fm1_in_stat.last, b = 0;
+#endif
     uint32_t w = 0xFFFFu ^ (1u << n) ^ (n < 2u ? 1u << (11u + n) : 0u), lit, dim = 0, k = fm1__dim_k;
     uint32_t br = 0, kb = 0;
     fm1__led_lines(0);
+#if !FELUCCA_CONTROLLER
     fm1_in_stat.last = t0;
     while (b < FM1_GAP_BINS - 1u && g >= (150u * FM1_TICKS_PER_US << b))
         b++;
@@ -521,6 +543,7 @@ static void fm1_input_tick(void)
     fm1_in_stat.on[p] += g;
     if (g > fm1_in_stat.on_max[p])
         fm1_in_stat.on_max[p] = g;
+#endif
     fm1_in.raw[p] = (uint8_t)fm1__rows();          /* column p has been latched one tick (the lines dark) */
     if (p == 0u)
         fm1__breath_frame();
@@ -553,8 +576,10 @@ static void fm1_input_tick(void)
             d = fm1_ticks() - t1;
         fm1__led_lines(0);
         fm1__dim_k = (uint8_t)(d > T ? (k ? k - 1u : 0u) : d < T && k < 16u ? k + 1u : k);
+#if !FELUCCA_CONTROLLER
         fm1_in_stat.dim_n++;
         fm1_in_stat.dim_sum += d;
+#endif
     } else {
         k = 0;
     }
@@ -570,11 +595,13 @@ static void fm1_input_tick(void)
         if (fm1__an_f)                             /* the power-on sweep: the next frame's picture */
             fm1__anim_frame();
     }
+#if !FELUCCA_CONTROLLER
     g = fm1_ticks() - t0;
     fm1_in_stat.cost_sum += g;
     fm1_in_stat.ticks++;
     if (g > fm1_in_stat.cost_max)
         fm1_in_stat.cost_max = g;
+#endif
 }
 
 /* main-loop critical section against fm1_input_tick (main loop only: it

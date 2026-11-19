@@ -93,6 +93,50 @@ static uint32_t project_mark(void);   /* (Skiff U3, A2) project.c: the slot's le
 static const uint8_t *cafa_native_view __attribute__((section(".bss.cafa_ui")));
 static uint8_t cafa_native_v4 __attribute__((section(".bss.cafa_ui")));
 static const char *const cafa_page_names[]={"HOME","SEQ","SOUND","ENV","FX","MIX","LFO","ARP","PATTERN","ENGINE"};
+#include "cafa_native_view.h"
+/* Only a completely validated, immutable publication is visible to painters.
+ * These are view inputs, not a shadow standalone track or project. */
+static const uint8_t *cafa_native_profile_view;
+static uint32_t cafa_native_profile_len;
+static uint16_t cafa_native_u14(const uint8_t *p) { return p[0] | (uint16_t)p[1] << 7; }
+static const uint8_t *cafa_nv_section(uint8_t tag, uint32_t *len)
+{
+    return cafa_native_section(cafa_native_profile_view, cafa_native_profile_len, tag, len);
+}
+static void cafa_native_text(char *dst, const uint8_t *src, uint32_t n)
+{
+    memcpy(dst, src, n);
+    while (n && dst[n - 1u] == ' ') n--;
+    dst[n] = 0;
+}
+static const uint8_t *cafa_nv_row(uint32_t i)
+{
+    uint32_t len;
+    const uint8_t *p = cafa_nv_section(1, &len);
+    return p && len && i < p[0] ? p + 1u + 48u * i : 0;
+}
+static const uint8_t *cafa_nv_cell(uint32_t i)
+{
+    uint32_t len;
+    const uint8_t *p = cafa_nv_section(5, &len);
+    return p && len >= 2u && i < cafa_native_u14(p) ? p + 2u + 7u * i : 0;
+}
+static void cafa_nv_line(char *dst, uint32_t size, uint32_t i)
+{
+    uint32_t len, n = size > 25u ? 24u : size - 1u;
+    const uint8_t *p = cafa_nv_section(7, &len);
+    if (!size) return;
+    if (!p || !len || i >= p[0]) { dst[0] = 0; return; }
+    cafa_native_text(dst, p + 1u + 24u * i, n);
+}
+static int cafa_native_overlay_draw(int full);
+static int cafa_native_device_input(uint32_t *, uint32_t *, int32_t [7]);
+static void cafa_native_device_reset(void);
+static void cafa_native_device_draw(void);
+static void cafa_native_app_menu_draw(void);
+static void cafa_native_name_draw(void);
+static void cafa_native_take_draw(void);
+static void cafa_native_profile_columns(void);
 #endif
 static int project_dirty(void);
 static int project_changed(void);
@@ -565,6 +609,13 @@ static uint32_t large_kind(void)
     uint32_t g;
     if (!(ui_prefs & PREF_LARGE))
         return LK_OFF;
+#if FELUCCA_CAFA
+    if (cafa_native_profile_view) {
+        uint32_t screen = cafa_native_profile_view[6];
+        if (screen >= 49u && screen <= 56u) return LK_LABEL;
+        if (screen >= 57u && screen != 67u) return LK_OFF;
+    }
+#endif
     if (ui.layer)
         return LK_LABEL;
     if (ui.home)

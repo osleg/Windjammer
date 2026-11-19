@@ -286,8 +286,8 @@ static const engine_t ENG_NOISE = {
     },
     .presets = NOISE_PRESETS,
     .npresets = NELEM(NOISE_PRESETS),
-    .note_on = noise_note_on,
-    .render = noise_render,
+    .note_on = ENG_AUDIO_CALLBACK(noise_note_on),
+    .render = ENG_AUDIO_CALLBACK(noise_render),
     .knob = {P_E2, P_E3, P_E1, P_REL},
     .keep = 0xF3,                /* the filter, the colour poles */
     .desc = noise_desc,

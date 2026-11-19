@@ -1,43 +1,18 @@
-name: Bug report
-description: Something in Skiff doesn't work as it should (one bug per issue)
+name: Firmware bug
+description: Report a reproducible Windjammer firmware or controller issue.
 labels: [bug]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        One reproducible bug per issue, on Skiff (not Felucca). Ideas and questions are welcome as issues too: say which it is in the title.
   - type: input
     id: version
     attributes:
-      label: Skiff version
-      description: Hold HOME > ABOUT on the FM-1
-      placeholder: "v1.0"
+      label: Windjammer build
+      description: Enter the release tag or source commit, and the installed companion app version.
     validations:
       required: true
-  - type: input
-    id: system
-    attributes:
-      label: Computer, OS and browser (if the editor, installer or USB is involved)
-      placeholder: "macOS 15.6, Chrome 140"
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      placeholder: |
-        1. ...
-        2. ...
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: What you expected
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: What happened
-      description: A photo or short video helps.
+      description: Include what you expected, what happened, and the audio route if relevant.
     validations:
       required: true

@@ -373,7 +373,7 @@ static const engine_t ENG_TRIO = {
     },
     .presets = TRIO_PRESETS,
     .npresets = NELEM(TRIO_PRESETS),
-    .note_on = trio_note_on,
-    .render = trio_render,
+    .note_on = ENG_AUDIO_CALLBACK(trio_note_on),
+    .render = ENG_AUDIO_CALLBACK(trio_render),
     .knob = {P_E5, P_E6, P_E7, P_E1},
 };

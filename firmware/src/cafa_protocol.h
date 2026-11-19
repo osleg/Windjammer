@@ -8,6 +8,8 @@
 #define CAFA_DYNAMIC_PAGE 9u
 static uint32_t cafa_state_bytes(uint32_t version) { return version==5 ? CAFA_DYNAMIC_BYTES : CAFA_STATE_BYTES; }
 #define CAFA_LEASE_MS 1500u
+/* Shared ISR gate: legacy keeps USB return enabled; wire-6 sets its route. */
+static volatile uint8_t cafa_usb_return_on=1, cafa_host_master;
 enum { CAFA_HELLO=1, CAFA_ACK, CAFA_STATE, CAFA_HEARTBEAT, CAFA_BYE, CAFA_INPUT };
 typedef struct {
     uint32_t last_ms;

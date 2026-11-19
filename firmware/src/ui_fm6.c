@@ -273,6 +273,39 @@ typedef struct {
     uint8_t q[FP_SIZE + 1u];                            /* the patch through the macros */
 } fm_sim_t;
 
+#if FELUCCA_CAFA
+static const uint8_t *fm_native_series(uint32_t id)
+{
+    uint32_t len,k,at=1;const uint8_t *p=cafa_nv_section(8,&len);
+    if(!p)return 0;
+    for(k=0;k<p[0];k++){const uint8_t *q=p+at;if(q[0]==id)return q;at+=3u+6u*q[2];}
+    return 0;
+}
+static uint32_t fm_display_sel(void)
+{
+    return cafa_native_profile_view ? cafa_native_u14(cafa_native_profile_view+24)%6u : fm_ui[0]%6u;
+}
+/* Build only the existing painter's breakpoint arrays. No patch, voice or DSP
+ * simulation is invented; x/y and spectral heat are already app view data. */
+static void fm_native_lines(fm_sim_t *s)
+{
+    uint32_t k,j;memset(s,0,sizeof *s);
+    for(k=0;k<6u;k++) {
+        const uint8_t *q=fm_native_series(k);fm_env_line_t *l=&s->op[k];
+        memset(l->end,255,sizeof l->end);
+        if(!q)continue;
+        if(q[1]&4u)s->live|=1u<<k;if(q[1]&2u)s->car|=1u<<k;l->n=q[2];
+        for(j=0;j<l->n;j++) {
+            l->x[j]=(int16_t)(cafa_native_u14(q+3u+6u*j)*(FM_XW-1u)/16383u);
+            l->v[j]=FM_TOP-FM_SPAN+(int32_t)((int64_t)cafa_native_u14(q+5u+6u*j)*FM_SPAN/16383u);
+            if(j&&j<=4u)l->end[j-1u]=(uint8_t)j;
+        }
+    }
+}
+#else
+static uint32_t fm_display_sel(void) { return fm_ui[0]%6u; }
+#endif
+
 /* log2 x, Q16 (x > 0): the exponent, the mantissa's log2 ~ f + 0.34 f (1 - f) (within 0.004) */
 static int32_t fm_log2(uint32_t x)
 {
@@ -436,6 +469,15 @@ static uint32_t fm_feeders(uint32_t alg, uint32_t c)
  * operator is c or one of them), its level over its top 60 dB, the square root (a little FM is heard at once) */
 static uint32_t fm_heat(const fm_sim_t *s, uint32_t c, uint32_t fed, int32_t x)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        const uint8_t *q=fm_native_series(c);uint32_t j,at=(uint32_t)clamp(x,0,FM_XW-1)*16383u/(FM_XW-1u);
+        if(!q||!q[2])return 0;
+        for(j=1;j<q[2];j++)if(cafa_native_u14(q+3u+6u*j)>=at)break;
+        if(j>=q[2])j=q[2]-1u;
+        return cafa_native_u14(q+7u+6u*j)*11u/16383u;
+    }
+#endif
     static const uint8_t SQ[11] = {1, 5, 13, 26, 43, 64, 89, 119, 153, 191, 233};   /* 256 ((i + 0.5) / 11)^2 */
     int32_t best = 0, n;
     uint32_t k, f = fm6_fb_op(s->alg), i;
@@ -574,6 +616,9 @@ static void fm_caption(const fm_sim_t *s, const uint16_t *sh)
 {
     char b[16];
     uint32_t j;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)cafa_nv_line(b,sizeof b,1);else
+#endif
     fm_secs(b, s->n);
     GFX_HOOK_ALIGN(0, FM_CY, 0, FM_CY + 12, AL_V, "FM6 graph caption on its row");
     cv_text_r(229, FM_CY + CAP_IN(S, 12), &AF_S, b, T_MID, T_SURF);
@@ -588,10 +633,14 @@ static void fm_caption(const fm_sim_t *s, const uint16_t *sh)
  * ramp: it shows the heat); TONE: the ratio beside the number */
 static void fm_tabs(const fm_sim_t *s, const uint16_t *sh, int ratios)
 {
-    uint32_t k, sel = fm_ui[0] % 6u;
+    uint32_t k, sel = fm_display_sel();
     for (k = 0; k < 6u; k++) {
         int32_t x = 8 + (int32_t)k * 38;
-        const uint8_t *op = fm6_patch[fm_tr()] + (5u - k) * FP_OP;
+        const uint8_t *op =
+#if FELUCCA_CAFA
+            cafa_native_profile_view ? 0 :
+#endif
+            fm6_patch[fm_tr()] + (5u - k) * FP_OP;
         int on = k == sel, live = s->live >> k & 1u;
         uint16_t ink = on ? T_TEXT : live ? T_MID : T_DIM;
         char b[8];
@@ -608,6 +657,15 @@ static void fm_tabs(const fm_sim_t *s, const uint16_t *sh, int ratios)
             if (on)
                 cv_frame(x + 1, 5, 32, 15, T_TEXT);
         }
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *r=cafa_nv_row(k);char label[17]={0},value[17]={0};
+            if(r){cafa_native_text(label,r,16);cafa_native_text(value,r+16,16);}
+            if(ratios){cv_text_fit(x+3,4+CAP_IN(S,17),&AF_S,label,ink,T_SURF,12);
+                cv_text_r(x+30,4+CAP_IN(S,17),&AF_S,value,live?T_MID:T_DIM,T_SURF);}
+            else cv_text_in(x,4+CAP_IN(S,17),34,&AF_S,label,ink,T_SURF);
+        } else
+#endif
         if (ratios) {
             b[0] = (char)('1' + k);
             b[1] = 0;
@@ -667,7 +725,7 @@ static void fm_lines(const fm_sim_t *s, const uint16_t *sh, uint32_t w)
 {
     uint8_t shade[FM_XW];
     uint16_t glow[12];
-    uint32_t k, sel = fm_ui[0] % 6u, pass, best = 0, bk = 0;
+    uint32_t k, sel = fm_display_sel(), pass, best = 0, bk = 0;
     int32_t x, bx = 0;
     char b[24];
     for (k = 0; k < 6u; k++)                            /* where it bites most (the carrier, the column) */
@@ -729,6 +787,10 @@ static void fm_lines(const fm_sim_t *s, const uint16_t *sh, uint32_t w)
                 l.v[j] += s->modlvl;
         fm_handles(&l, fm_hot_stage(w), fm_lvy);
     }
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)cafa_nv_line(b,sizeof b,0);
+    else
+#endif
     if (best) {                                         /* where it bites most: a mark under it, the caption */
         int32_t r, lo = 0, hi = s->n;                   /* (the block at that column: the axis rises) */
         if (ux.crypt) {                                 /* ((FM6 LAB T) CRYPT: a flame; NEON, QUARK: theirs behind) */
@@ -755,6 +817,27 @@ static void fm_lines(const fm_sim_t *s, const uint16_t *sh, uint32_t w)
     fm_caption(s, sh);
 }
 
+#if FELUCCA_CAFA
+static void fm_native_curve(uint16_t c,int32_t top,int32_t bottom,int fill)
+{
+    uint32_t len,n,j;const uint8_t *p=cafa_nv_section(3,&len);
+    if(!p)return;n=cafa_native_u14(p);
+    for(j=1;j<n;j++) {
+        int32_t xa=FM_X0+cafa_native_u14(p+2u+4u*(j-1u))*(FM_XW-1u)/16383u;
+        int32_t xb=FM_X0+cafa_native_u14(p+2u+4u*j)*(FM_XW-1u)/16383u;
+        int32_t ya=bottom-(int32_t)cafa_native_u14(p+4u+4u*(j-1u))*(bottom-top)/16383;
+        int32_t yb=bottom-(int32_t)cafa_native_u14(p+4u+4u*j)*(bottom-top)/16383;
+        if(fill)fm_under(xb,yb,bottom);
+        fm_seg2(xa,ya,xb,yb,2,c);
+    }
+}
+static void fm_native_caption(void)
+{
+    char a[25],b[25];cafa_nv_line(a,sizeof a,0);cafa_nv_line(b,sizeof b,1);
+    cv_text_on(10,FM_CY+CAP_IN(S,12),&AF_S,a,T_MID,T_SURF);
+    cv_text_r(229,FM_CY+CAP_IN(S,12),&AF_S,b,T_MID,T_SURF);
+}
+#endif
 /* KEYS and MORE: the picked operator's level across the keyboard (fm6_scale_level, MIDI 21 .. 108): 0 dB at the top
  * third, -48 dB at the bottom; BREAK a dotted line with its note, C4 a dot; the octaves under it */
 static int32_t fm_keys_y(const uint8_t *op, uint32_t note, int32_t zy, int32_t rng)
@@ -764,7 +847,11 @@ static int32_t fm_keys_y(const uint8_t *op, uint32_t note, int32_t zy, int32_t r
 }
 static void fm_keys(uint16_t c)
 {
-    const uint8_t *op = fm6_patch[fm_tr()] + (5u - fm_ui[0] % 6u) * FP_OP;
+    const uint8_t *op =
+#if FELUCCA_CAFA
+        cafa_native_profile_view ? 0 :
+#endif
+        fm6_patch[fm_tr()] + (5u - fm_ui[0] % 6u) * FP_OP;
     int32_t zy = FM_GY + 21, kb = FM_GY + 91, rng = kb - 6 - zy, o, x, bx;
     uint32_t n;
     char b[16];
@@ -779,6 +866,9 @@ static void fm_keys(uint16_t c)
             cv_text_on(xa, kb + 6 + CAP_IN(S, 12), &AF_S, b, T_DIM, T_SURF);
         }
     }
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {fm_native_curve(c,FM_GY+4,kb-6,1);fm_native_caption();return;}
+#endif
     bx = FM_X0 + clamp((int32_t)op[FP_BP] * (FM_XW - 1) / 87, 0, FM_XW - 1);   /* BREAK: MIDI BP + 21 */
     if (ux.crypt || ux.neon || ux.quark)               /* ((FM6 LAB T) the theme's fill under the curve) */
         for (x = 0; x < FM_XW; x++)
@@ -812,6 +902,11 @@ static void fm_keys(uint16_t c)
 /* ALGO: the chart (graph_fm6, the picked operator lit) and what the operator does in it */
 static void fm_algo(const track_t *t, uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        cv_oy=GOY+graph_pad();graph_fm6(0,c);cv_oy=0;fm_native_caption();return;
+    }
+#endif
     uint8_t m[6];
     uint32_t alg = fm6_alg_of(t), sel = fm_ui[0] % 6u, k, n = 0;
     char b[32];
@@ -869,6 +964,12 @@ static int32_t fm_range(int32_t cents)
 }
 static void fm_pitch(const fm_sim_t *s, uint16_t c, uint32_t w)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        cv_rect(FM_X0,FM_GY+FM_GH/2,FM_XW,1,FM_GUIDE);
+        fm_native_curve(c,FM_GY+6,FM_GY+FM_GH-6,1);fm_native_caption();return;
+    }
+#endif
     fm_env_line_t l = s->pitch;
     int32_t x, m = 0;
     uint32_t j, flat = 1;
@@ -891,6 +992,12 @@ static void fm_pitch(const fm_sim_t *s, uint16_t c, uint32_t w)
 }
 static void fm_lfo(const fm_sim_t *s, uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        cv_rect(FM_X0,FM_GY+FM_GH/2,FM_XW,1,FM_GUIDE);
+        fm_native_curve(c,FM_GY+6,FM_GY+FM_GH-6,1);fm_native_caption();return;
+    }
+#endif
     const uint8_t *q = s->q;
     fm6_lfo_t lf;
     fm6_env_t e[6];
@@ -971,6 +1078,18 @@ static void fm_draw(uint32_t pg, const track_t *t, uint16_t c)
     uint16_t sh[12];
     uint32_t w = fm_ui[1 + pg] % FM_NWIN;
     fm_ramp(sh);
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        w=cafa_native_u14(cafa_native_profile_view+20);if(w>=FM_NWIN)w=0;
+        fm_native_lines(&s);
+        if(pg&&w==FMW_ALGO)fm_algo(0,c);
+        else if(!pg&&(w==FMW_KEYS||w==FMW_MORE)){fm_tabs(&s,sh,0);fm_keys(c);}
+        else if(pg&&(w==FMW_LFO||w==FMW_DEPTH))fm_lfo(&s,c);
+        else if(pg)fm_pitch(&s,c,w);
+        else{fm_tabs(&s,sh,w==FMW_TONE);fm_lines(&s,sh,w);}
+        fm_scroll(w);return;
+    }
+#endif
     if (pg && w == FMW_ALGO) {
         fm_algo(t, c);
     } else if (!pg && (w == FMW_KEYS || w == FMW_MORE)) {

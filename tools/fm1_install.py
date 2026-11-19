@@ -487,11 +487,56 @@ class Updater:
             time.sleep(DELAY["retry"])
         return None
 
-    def serve(self, link, image, finish, idle, progress):
+    def recover_identity(self, name):
+        """One pre-fix FM-1 check session; return the verified device and its pending first read."""
+        outs = self.backend.output_names()
+        base = re.sub(r"\s+\d+$", "", name)
+        matches = [o for o in outs if re.sub(r"\s+\d+$", "", o) == base]
+        out = name if name in outs else matches[0] if len(matches) == 1 else None
+        if not out:
+            raise InstallError("notfound", f"no MIDI output paired with {name!r}")
+        link = self.backend.open(name, out)
+        try:
+            if handshake(link, 2):
+                raise InstallError("usage", "ordinary identity works; install without --recover-identity")
+            if not link.send(UPGRADE):
+                raise InstallError("lost", "the MIDI port disconnected before the recovery check")
+            first = None
+            end = time.monotonic() + DELAY["start"] + DELAY["hs"]
+            while (left := end - time.monotonic()) > 0:
+                pkt = link.read(left)
+                if pkt is not None and parse_request(pkt) == (0, 0, 512):
+                    first = pkt
+                    break
+                if link.lost:
+                    break
+            if first is None:
+                raise InstallError("stopped", "no first package read from the running FM-1; nothing was sent")
+            if not link.send(HS_QUERY):
+                raise InstallError("lost", "the MIDI port disconnected during identity verification")
+            end = time.monotonic() + DELAY["hs"]
+            while (left := end - time.monotonic()) > 0:
+                pkt = link.read(left)
+                if pkt is None:
+                    break
+                body = parse_reply(pkt, 0x11)
+                if body is None:
+                    continue                         # first read may have been retried
+                ident = parse_identity(pkt)
+                if len(body) != 27 or not ident or body != b"FM-1_700" + bytes(19):
+                    raise InstallError("model", "recovery check returned another identity; nothing was sent")
+                return Device(link, ident, name), first
+            raise InstallError("stopped", "no verified FM-1_700 identity in the recovery check; nothing was sent")
+        except Exception:
+            link.close()
+            raise
+
+    def serve(self, link, image, finish, idle, progress, first=None):
         """answer read requests until the device asks for `finish`; -> (served, finished, lost)"""
         served, last = 0, time.monotonic()
         while True:
-            pkt = link.read(DELAY["poll"])
+            pkt = first if first is not None else link.read(DELAY["poll"])
+            first = None
             if pkt is None:
                 if link.lost:
                     return served, False, True
@@ -516,14 +561,15 @@ class Updater:
             served += 1
             progress(served, addr, n)
 
-    def check(self, dev, image, product, step):
+    def check(self, dev, image, product, step, first=None):
         """step 1: the running firmware checks the package and starts the loader (the package's model's: another
         unit on the same computer may be in update mode too)"""
         step("start", dev.id.text)
-        dev.link.send(UPGRADE)
-        time.sleep(DELAY["start"])
+        if first is None:
+            dev.link.send(UPGRADE)
+            time.sleep(DELAY["start"])
         served, finished, lost = self.serve(dev.link, image, FINISH_CHECK, DELAY["idle_check"],
-                                            lambda k, addr, n: step("check", k))
+                                            lambda k, addr, n: step("check", k), first)
         dev.link.close(going=finished)      # (checked: it restarts into the loader)
         if not finished:
             raise InstallError("lost" if lost else "stopped",
@@ -564,19 +610,19 @@ class Updater:
         step("done", back.id.text)
         return back.id.text
 
-    def staged(self, dev, image, product, step):
+    def staged(self, dev, image, product, step, first=None):
         """the package's model checked, then step 1 unless the device is already in update mode -> the loader"""
         if not same_model(dev.id.text, product):
             dev.link.close()
             raise InstallError("model", f"the device is {dev.id.text}, the package is for {product}")
-        return dev if dev.id.loader else self.check(dev, image, product, step)
+        return dev if dev.id.loader else self.check(dev, image, product, step, first)
 
-    def install(self, dev, image, product, step=lambda *a: None):
+    def install(self, dev, image, product, step=lambda *a: None, first=None):
         """running firmware -> loader -> new firmware; dev from find(). A device already in
         update mode only needs the write. A write cut off (cable, power, a loader that resets or stops
         answering) is resumed when the same model's loader answers again within DELAY["wait_resume"]: the
         update record keeps the device in update mode, and the loader writes the app's header last."""
-        ota = self.staged(dev, image, product, step)
+        ota = self.staged(dev, image, product, step, first)
         for attempt in range(1, RESUME_MAX + 1):
             try:
                 self.write(ota, image, step)
@@ -679,6 +725,25 @@ def run(a, backend, out, ask):
         return 0
     product, image = load_package(a.package, a.force)
     print(f"package: {product}  ({a.package})", file=out)
+    if a.recover_identity:
+        if product != "FM-1_700" or a.force or a.uboot or LOADER_MARK not in image or not files_ok(image):
+            raise InstallError("badpkg", "identity recovery requires a valid FM-1_700 package with its update loader")
+        names = backend.input_names()
+        if a.port not in names:
+            raise InstallError("notfound", f"identity recovery needs an exact --port name; MIDI inputs: {', '.join(names)}")
+        if not a.yes and not ask("Install this FM-1_700 package after one identity recovery check? "
+                                  "If the running identity is verified, the installer will send package data "
+                                  "and write the firmware. [y/N] "):
+            print("cancelled", file=out)
+            return 1
+        dev, first = up.recover_identity(a.port)
+        print(f"device:  {dev.id.text}  ({dev.name})", file=out)
+        prog = Progress(out)
+        try:
+            up.install(dev, image, product, prog, first=first)
+        finally:
+            prog.end()
+        return 0
     dev = up.find(lambda i: same_model(i.text, product)) or up.find()     # the package's model first: two units
     if not dev:
         raise not_found(up)
@@ -721,9 +786,13 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
     ap.add_argument("--uboot", action="store_true",
                     help="only start the package's update loader, then send it the UBOOT key (a flash backup)")
+    ap.add_argument("--recover-identity", action="store_true",
+                    help="one-time FM-1_700 recovery when its running identity query is lost (requires exact --port)")
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package) or (a.uboot and not a.package):
         ap.error("give a PACKAGE.fwsc or --info (--uboot needs a PACKAGE.fwsc)")
+    if a.recover_identity and (not a.package or not a.port):
+        ap.error("--recover-identity needs a PACKAGE.fwsc and the exact --port name")
     real = backend is None
     try:
         if backend is None:

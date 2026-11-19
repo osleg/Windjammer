@@ -1,11 +1,11 @@
-# Skiff licensing
+# Windjammer licensing
 
-Skiff is free software, licensed under the GNU General Public License, version 3 only
+Windjammer is free software, licensed under the GNU General Public License, version 3 only
 (`GPL-3.0-only`, full text in `LICENSE`). That covers the code and its own assets. A few
 bundled or ported parts keep their own licences; they are listed below, and their licence
 texts are in `LICENSES/`.
 
-Skiff is a fork of Felucca 1.1.5 by Hügelton Instruments (<https://github.com/hugelton/Felucca>),
+Windjammer is derived from Skiff, a fork of Felucca 1.1.5 by Hügelton Instruments (<https://github.com/hugelton/Felucca>),
 under the same licence. Felucca's files keep their copyright notices; Skiff's changes are marked
 (Skiff) in the sources.
 
@@ -27,9 +27,9 @@ Three source files are ports and keep the licence of their originals:
 licence: `firmware/hal/fm1_clk320.h` and `firmware/hal/fm1_clk320_probe.h` (fm1-clk320-probe,
 MIT). The firmware built with them is GPL-3.0-only as a whole.
 
-You may use, study, change and share Skiff under the GPL. If you distribute Skiff, or
-firmware derived from it, you must also give your recipients its complete corresponding
-source under the same licence. That includes devices that ship with modified Skiff inside.
+You may use, study, change and share Windjammer under the GPL. Distribution requires
+the complete corresponding source under the same license, including when the firmware
+is distributed on a device.
 
 ## Hügelton Instruments' own work
 
@@ -98,8 +98,7 @@ Every distribution of a package carries the licence texts with it: the release f
 
 ## No vendor material
 
-No M-VAVE material is part of Skiff. The firmware links no vendor code and contains no vendor
-data, and the packages hold only Skiff and the three SDK files above. The installer's
+The controller release includes Windjammer and the three JieLi SDK inputs listed above. The installer's
 "Return to official V15" holds only the official file's size and SHA-256: you select the
 official firmware file you downloaded yourself, and it is checked and installed in your browser,
 never uploaded or redistributed.
@@ -110,13 +109,12 @@ Contributions are welcome under GPL-3.0-only.
 
 ## Trademarks
 
-"Felucca" and "Hügelton Instruments" are names of Hügelton Instruments. Skiff is not Felucca,
-and is not made, endorsed or supported by Hügelton Instruments.
+"Felucca" and "Hügelton Instruments" are names of Hügelton Instruments. Windjammer is independent of Hügelton Instruments and upstream Skiff.
 
-"M-VAVE" and "FM-1" are trademarks of their respective owners. Skiff is independent
+"M-VAVE" and "FM-1" are trademarks of their respective owners. Windjammer is independent
 firmware that runs on FM-1 hardware. It is not affiliated with, endorsed by or supported
 by those owners.
 
 ## Radio
 
-Skiff never enables the Bluetooth / Wi-Fi radio of the hardware.
+Windjammer leaves the hardware’s Bluetooth and Wi-Fi radio disabled.

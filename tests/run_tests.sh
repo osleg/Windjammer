@@ -224,7 +224,7 @@ else
     echo "FM-1 V15: skipped (FM1_STOCK_DIR not set)"
 fi
 $CC -o "$OUT/ldr_screen_test" tests/ldr_screen_test.c
-run "update loader's screen (Skiff): UPDATE MODE, WRITING and its bar, UPDATE FAILED" "$OUT/ldr_screen_test"
+run "Windjammer update loader screen: UPDATE MODE, WRITING and its bar, UPDATE FAILED" "$OUT/ldr_screen_test"
 
 # the SMK-37 Pro build (BOARD_SMK37; after genkigenki's SMK-37 layer): the flash map and the store's owner tag, the
 # package layout, the OTA staging and the loader's windows on SMK-layout packages (made here from the FM-1 binaries:
@@ -243,9 +243,9 @@ for m in 1 2; do                         # the MODEL=elite / mke builds of ota.c
     run "M-UPGRADE entry, SMK model $m build (MODEL=elite / mke: its own record identity)" "$OUT/ota_test_smk_m$m"         "$OUT/smk_new.fwsc"
 done
 for m in pro elite mke; do               # the packages BOARD=smk37 MODEL=... sh build.sh made, when present
-    f=build/skiff-smk37.fwsc; id="SMK-37 Pro_700"
-    [ $m = elite ] && f=build/skiff-smk37-elite.fwsc && id="SMK-37 Elite_700"
-    [ $m = mke ] && f=build/skiff-smk37-mke.fwsc && id="MKE-P37_700"
+    f=build/windjammer-smk37.fwsc; id="SMK-37 Pro_700"
+    [ $m = elite ] && f=build/windjammer-smk37-elite.fwsc && id="SMK-37 Elite_700"
+    [ $m = mke ] && f=build/windjammer-smk37-mke.fwsc && id="MKE-P37_700"
     [ -f $f ] && run "SMK package $f: identity $id, the stock region table" python3 tests/smk_pkg_test.py $f "$id"
 done
 $CC -DBOARD_SMK37=1 -o "$OUT/ldr_test_smk" tests/ldr_test.c

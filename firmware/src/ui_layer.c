@@ -876,6 +876,22 @@ _Static_assert(sizeof B_NOTE >= NTRK, "a black key's name for every track");
 #define LM_Y 96                                          /* the black keys' row (22 px) */
 #define LM_H 22
 enum { LS_OFF, LS_SEL, LS_HELD, LS_WAIT, LS_DIM, LS_MUTE };
+#if FELUCCA_CAFA
+static uint32_t cafa_layer_rows(void)
+{
+    uint32_t len; const uint8_t *p = cafa_nv_section(1, &len);
+    return p && len ? p[0] : 0u;
+}
+static uint32_t cafa_layer_state(const uint8_t *r)
+{
+    return !r || (r[40] & 16u) ? LS_DIM : (r[40] & 4u) ? LS_MUTE :
+           (r[40] & 2u) ? LS_HELD : (r[40] & 1u) ? LS_SEL : LS_OFF;
+}
+static int cafa_layer_remote(void) { return cafa_native_profile_view != 0; }
+#else
+static int cafa_layer_remote(void) { return 0; }
+#endif
+
 
 static int32_t lc_w = LC_W;                              /* the cells' width (FX's effects: LF_W) */
 static uint16_t lc_fill(uint32_t st, uint16_t *ink)
@@ -947,11 +963,11 @@ static void bnote(char *n, uint32_t t) { n[0] = B_NOTE[t]; n[1] = '#'; n[2] = 0;
 #define L6_X(c) (4 + 39 * (int32_t)(c))
 #define L6_W 36
 #define L6_WIDE (2 * L6_W + 3)
-static void l6_solo(uint32_t k, uint32_t st)
+static void l6_solo(uint32_t k, uint32_t track, uint32_t st)
 {
     int32_t x = L6_X(k), y = 4, b[4], j;
     uint16_t ink, fill = lc_fill(st, &ink), idle = fill == T_RAISE;
-    uint32_t id = trk_icon(k, 0), p;
+    uint32_t id = cafa_layer_remote() ? ICON_TRK + k : trk_icon(k, 0), p;
     char n[2] = {'?', 0};
     for (p = 0; p < sizeof GLO_W; p++)                   /* (its key: GLO_W's) */
         if (GLO_W[p] == k)
@@ -960,9 +976,23 @@ static void l6_solo(uint32_t k, uint32_t st)
     cv_text_on(x + 4, y + 3, &AF_S, n, idle ? T_MID : ink, fill);
     icon_ink(16, id, b);                                 /* (its ink from 4 px down, centred right of the key) */
     GFX_HOOK_ALIGN(x + 10, 0, x + L6_W - 2, 0, AL_H, "six-track SOLO number centred right of its key");
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()) {
+        char number[8];fmt_int(number,(int32_t)track+1);
+        cv_text_in(x+10,y+4,L6_W-12,&AF_M,number,ink,fill);
+    } else
+#endif
     cv_icon_in(x + 10, y + 4 - b[1], L6_W - 12, 0, 16, id, ink, fill);
     GFX_HOOK_ALIGN(x, 0, x + L6_W, 0, AL_H, "six-track SOLO word centred across");
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()) {
+        const uint8_t *r=cafa_nv_row(k); char label[17]={0};
+        if(r)cafa_native_text(label,r,16);
+        cv_text_fit(x+2,y+24,&AF_S,label,ink,fill,L6_W-4);
+    } else
+#endif
     cv_text_in(x, y + 24, L6_W, &AF_S, "SOLO", ink, fill);
+    (void)track;
     for (j = 0; j < 4; j++)                              /* (HOLD: the corner triangle) */
         cv_rect(x + L6_W - 7 + j, y + 2 + j, 4 - j, 1, ink);
 }
@@ -977,13 +1007,16 @@ static void l6_wide(uint32_t q, const char *note, uint32_t icon, const char *wor
     GFX_HOOK_ALIGN(x, 0, x + L6_WIDE, 0, AL_H, "six-track GLO cell word centred across");
     cv_text_in(x, y + 19, L6_WIDE, &AF_M, word, ink, fill);
 }
-static void l6_mute(uint32_t k, uint32_t st, uint32_t icon)   /* (Skiff U2, R10) icon: GLO's MUTE (latched), FX's
+static void l6_mute(uint32_t k, uint32_t track, uint32_t st, uint32_t icon) /* (Skiff U2, R10) icon: GLO's MUTE (latched), FX's
                                                                 * CUT while held: the gate, alone (as FX's white keys'
                                                                 * effects: no room for it beside the note's name) */
 {
     int32_t x = L6_X(k), y = LM_Y, b[4], cut = icon != ICON_MUTE;
     uint16_t ink, fill = lc_fill(st, &ink), idle = fill == T_RAISE;
-    char n[3], d[2] = {(char)('1' + k), 0};
+    char n[3], d[8];
+    int short_num = track < 9u;
+    const aafont_t *num_font = short_num ? &AF_M : &AF_S;
+    fmt_int(d,(int32_t)track+1);
     bnote(n, k);
     fill = lc_box(x, y, L6_W, LM_H, fill);
     GFX_HOOK_ALIGN(0, y, 0, y + LM_H, AL_V, "layer key cell icon / name centred up/down");
@@ -994,16 +1027,17 @@ static void l6_mute(uint32_t k, uint32_t st, uint32_t icon)   /* (Skiff U2, R10)
     icon_ink(12, icon, b);
     icon_lint_ink = 1;
     GFX_HOOK_ALIGN(0, y, 0, y + LM_H, AL_V, "layer key cell icon / name centred up/down");
-    cv_icon_in(x + (cut ? 11 : 18) - b[0], y, 0, LM_H, 12, icon, ink, fill);
+    cv_icon_in(x + (cut ? 11 : short_num ? 18 : 14) - b[0], y, 0, LM_H, 12, icon, ink, fill);
     icon_lint_ink = 0;
-    text_ink(&AF_M, d, b);
+    text_ink(num_font, d, b);
     GFX_HOOK_ALIGN(0, y, 0, y + LM_H, AL_V, "layer key cell icon / name centred up/down");
-    cv_text_on(x + 34 - b[2], y + CAP_IN(M, LM_H), &AF_M, d, idle ? T_TRK(k) : ink, fill);
+    cv_text_on(x + 34 - b[2], y + (short_num ? CAP_IN(M, LM_H) : CAP_IN(S, LM_H)), num_font, d,
+               idle ? T_TRK(track) : ink, fill);
 }
 
 static void layer_fx(void)
 {
-    uint32_t held = perf_kill ? 0u : perf_held | perf_latched, act = perf_act, ok = perf_avail(), e;
+    uint32_t held = cafa_layer_remote() || perf_kill ? 0u : perf_held | perf_latched, act = cafa_layer_remote() ? 0u : perf_act, ok = cafa_layer_remote() ? 0u : perf_avail(), e;
     char n[3] = {0, 0, 0};
     lc_w = LF_W;
     for (e = 0; e < PF_M1; e++) {                       /* the effects of the white keys F3 .. E5, an octave a row */
@@ -1011,18 +1045,56 @@ static void layer_fx(void)
             GFX_HOOK_ALIGN(0, 0, 240, 0, AL_H | AL_CELLS | AL_N(LF_ROW), "FX cells' row centred");
         uint32_t st = !((ok >> e) & 1u) ? LS_DIM : !((held >> e) & 1u) ? LS_OFF : (act >> e) & 1u ? LS_HELD : LS_WAIT;
         n[0] = W_NOTE[e];
+#if FELUCCA_CAFA
+        if (cafa_layer_remote()) {
+            const uint8_t *r = cafa_nv_row(e); char label[17], key[17];
+            label[0] = key[0] = 0;
+            if (r) { cafa_native_text(label,r,16); cafa_native_text(key,r+16,16); }
+            st = !r || (r[40] & 16u) ? LS_DIM : (r[40] & 2u) ? LS_HELD :
+                 (r[40] & 32u) ? LS_WAIT : LS_OFF;
+            lcell(LF_X(e % LF_ROW), e < LF_ROW ? 4 : 50, LC_H, key, PF_ICON[e], label, st);
+        } else
+#endif
         lcell(LF_X(e % LF_ROW), e < LF_ROW ? 4 : 50, LC_H, n, PF_ICON[e], e < 3u ? PF_DIV[e] : 0, st);
     }
     lc_w = LC_W;
+#if FELUCCA_CAFA
+    if (cafa_layer_remote()) {
+        for (e = 0; e < CAFA_TRACK_LANES; e++) {
+            const uint8_t *cell = cafa_nv_cell(e);
+            if (!cell) break;
+            l6_mute(e, cafa_native_u14(cell), cell[2] & 64u ? LS_DIM : cell[2] & 3u ? LS_MUTE : LS_OFF, ICON_MUTE);
+        }
+        return;
+    }
+#endif
     for (e = 0; e < NTRK; e++)                          /* ((2.0, D 1A) the black keys 1..6 as GLO's: MUTE, a hold */
-        l6_mute(e, trk[e].p[P_MUTE] || trk_cut(e) ? LS_MUTE : LS_OFF, ICON_MUTE);   /* cutting) */
+        l6_mute(e, e, trk[e].p[P_MUTE] || trk_cut(e) ? LS_MUTE : LS_OFF, ICON_MUTE);   /* cutting) */
 }
 static void layer_glo(void)
 {
     uint32_t e;
+#if FELUCCA_CAFA
+    if (cafa_layer_remote()) {
+        static const uint8_t icons[3] = {ICON_MUTE, ICON_DRUM, ICON_TEMPO};
+        uint32_t first = cafa_native_u14(cafa_native_profile_view + 26u), count = cafa_nv_track_lanes();
+        for (e = 0; e < count; e++) {
+            uint32_t flags = cafa_nv_row(e)[40];
+            l6_solo(e, first + e, flags & 16u ? LS_DIM : flags & 2u ? LS_HELD : LS_OFF);
+            l6_mute(e, first + e, flags & 16u ? LS_DIM : flags & 4u ? LS_MUTE : LS_OFF, ICON_MUTE);
+        }
+        for (e=0;e<3u;e++) {
+            const uint8_t *c=cafa_nv_cell(e); char label[5]={0};
+            if(c)cafa_native_text(label,c+3,4);
+            l6_wide(e, e==0?"E":e==1?"F":"G",icons[e],label,
+                !c || (c[2]&64u)?LS_DIM:(c[2]&3u)?LS_HELD:LS_OFF);
+        }
+        return;
+    }
+#endif
     for (e = 0; e < NTRK; e++) {                        /* (Skiff phase 6) SOLO 1..6 while held: F G A B C D (GLO_W); */
-        l6_solo(e, (perf_solo >> e) & 1u ? LS_HELD : LS_OFF);   /* MUTE 1..6, latched: F# G# A# C# D# F# ((2.0) */
-        l6_mute(e, trk[e].p[P_MUTE] || trk_cut(e) ? LS_MUTE : LS_OFF, ICON_MUTE);   /* a hold cutting too) */
+        l6_solo(e, e, (perf_solo >> e) & 1u ? LS_HELD : LS_OFF);
+        l6_mute(e, e, trk[e].p[P_MUTE] || trk_cut(e) ? LS_MUTE : LS_OFF, ICON_MUTE);
     }
     l6_wide(0, "E", ICON_MUTE, "ALL", LS_OFF);          /* (unmute all) */
     l6_wide(1, "F", ICON_DRUM, "FILL", seq_fill ? LS_HELD : LS_OFF);
@@ -1030,12 +1102,26 @@ static void layer_glo(void)
 }
 static void layer_scl(void)                             /* KNOB 2's scales, 4 x 4, the one now selected */
 {
-    uint32_t i, sc = (uint32_t)TSEL->p[P_SCALE];
-    for (i = 0; i < 16u && i <= (uint32_t)TP[P_SCALE].max; i++) {
+    uint32_t i, sc = cafa_layer_remote() ? 0u : (uint32_t)TSEL->p[P_SCALE];
+    uint32_t n = (uint32_t)TP[P_SCALE].max + 1u;
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()) n=cafa_layer_rows();
+#endif
+    for (i = 0; i < 16u && i < n; i++) {
         int32_t x = LC_X(i % 4u), y = 4 + 29 * (int32_t)(i / 4u);
-        uint16_t ink, fill = lc_fill(i == sc ? LS_SEL : LS_OFF, &ink);
+        uint16_t ink, fill = lc_fill(
+#if FELUCCA_CAFA
+            cafa_layer_remote() ? cafa_layer_state(cafa_nv_row(i)) :
+#endif
+            i == sc ? LS_SEL : LS_OFF, &ink);
         fill = lc_box(x, y, LC_W, 25, fill);
         GFX_HOOK_ALIGN(x, y, x + LC_W, y + 25, AL_HV, "scale cell name centred");
+#if FELUCCA_CAFA
+        if(cafa_layer_remote()) {
+            char label[17]; cafa_native_text(label,cafa_nv_row(i),16);
+            cv_text_in(x,y+CAP_IN(S,25),LC_W,&AF_S,label,ink,fill);
+        } else
+#endif
         cv_text_in(x, y + CAP_IN(S, 25), LC_W, &AF_S, TP[P_SCALE].names[i], ink, fill);
     }
 }
@@ -1084,18 +1170,38 @@ static void layer_perf(void)
 {
     int blocks = 1;                                   /* ponytail: FLAT and LINE retired (U2); U3's six rows redraw this */
     uint16_t g0 = blocks ? T_BG : T_SURF;
-    uint32_t k, p, pos, now = scene_now(), act = (uint32_t)perf_scenes();
+    uint32_t remote = cafa_layer_remote(), ntracks = NTRK, first_track = 0u;
+    uint32_t k, p, pos, now = remote ? 0u : scene_now(), act = remote ? 0u : (uint32_t)perf_scenes();
+#if FELUCCA_CAFA
+    if (remote) {
+        const uint8_t *first = cafa_nv_row(0);
+        ntracks = cafa_nv_track_lanes();
+        first_track = cafa_native_u14(cafa_native_profile_view + 26u);
+        act = first && cafa_native_u14(first + 41u) == 1u;
+    }
+#endif
     if (blocks) {                                     /* (over the panel, as HOME: the rows are on the ground) */
         cv_rect(0, 0, 240, H_GRAPH + (int32_t)foot_less(), T_BG);
         cv_bg = T_BG;
     }
-    for (pos = 0, k = 0; k < NTRK; pos++, k++) {        /* ((Skiff U3, N1) every track) */
+    for (pos = 0, k = 0; k < ntracks; pos++, k++) {        /* ((Skiff U3, N1) every track) */
         int32_t y = PR_Y(pos), ty = y + (PR_H - PR_TH) / 2;
-        int band = k == song.sel % NTRK, cb = band && blocks, muted = trk[k].p[P_MUTE] != 0;
-        uint16_t col = T_TRK(k), g = cb ? col : band ? T_RAISE : g0;
+        uint32_t track = first_track + k;
+        int band = !remote && k == song.sel % NTRK, cb, muted = !remote && trk[k].p[P_MUTE] != 0;
+        uint32_t armed = remote ? 0u : mute_arm[k];
+#if FELUCCA_CAFA
+        const uint8_t *r=remote?cafa_nv_row(k):0;
+        if(remote){band=r&&(r[40]&1u);muted=r&&(r[40]&4u);armed=r&&(r[40]&64u);}
+#endif
+        cb=band&&blocks;
+        uint16_t col = T_TRK(track), g = cb ? col : band ? T_RAISE : g0;
         uint16_t tile = cb ? T_INK : muted ? T_DIM : col;   /* (on the band: the M says it) */
-        uint32_t cur = bank_cur(k), nx = bank_next(k);
-        char d[2] = {(char)('1' + k), 0};
+        uint32_t cur = remote ? 0u : bank_cur(k), nx = remote ? 0u : bank_next(k);
+        char d[17];
+        fmt_int(d, (int32_t)track + 1);
+#if FELUCCA_CAFA
+        if(remote && r && r[0]!=' ')cafa_native_text(d,r,16);
+#endif
         if (cb && ux.neon) {                          /* (Skiff N3) NEON: the band its colour into violet; a muted row */
             uint16_t st[2] = {col, ux_mix(col, NE_VIOLET, 70)};   /* in snow */
             ne_hgrad(3, y, 234, PR_H, st, 2);
@@ -1106,33 +1212,48 @@ static void layer_perf(void)
         if (ux.quark && muted)                        /* ((Skiff Q3) QUARK: a muted row dark matter, dotted) */
             qk_dotframe(16, y, 221, PR_H, cb ? T_INK : T_DIM);
         if (ux.neon && muted)                         /* ((Skiff N8) the band's too: dark snow on it) */
-            ne_snow(17, y, 220, PR_H, k * 7u + 11u, cb ? col : T_BG, cb ? T_INK : T_MID);
+            ne_snow(17, y, 220, PR_H, track * 7u + 11u, cb ? col : T_BG, cb ? T_INK : T_MID);
         GFX_HOOK_ALIGN(0, y, 0, y + PR_H, AL_V, "perform track number on its row's middle");
-        cv_text_on(6, y + CAP_IN(M, PR_H), &AF_M, d, cb ? T_INK : col, g);
+        if (d[0] && !d[1])
+            cv_text_on(6, y + CAP_IN(M, PR_H), &AF_M, d, cb ? T_INK : col, g);
+        else
+            cv_text_fit(3, y + CAP_IN(S, PR_H), &AF_S, d, cb ? T_INK : col, g, 14);
         for (p = 0; p < BANK_SLOTS; p++) {
-            char s[2] = {(char)('A' + p), 0};
-            uint32_t st = p == nx ? PC_NEXT : p == cur ? PC_ON : ent_on(k, p) ? PC_KEPT : PC_EMPTY;
+            char s[5] = {(char)('A' + p), 0};
+            uint32_t st = remote ? PC_EMPTY : p == nx ? PC_NEXT : p == cur ? PC_ON : ent_on(k, p) ? PC_KEPT : PC_EMPTY;
+#if FELUCCA_CAFA
+            if(remote){const uint8_t *c=cafa_nv_cell(k*16u+p);if(c){
+                st=(c[2]&4u)?PC_NEXT:(c[2]&2u)?PC_ON:(c[2]&1u)?PC_KEPT:PC_EMPTY;
+                cafa_native_text(s,c+3,4);
+            }}
+#endif
             perf_cell(PR_X(p), y, s, st, st == PC_ON ? tile : cb ? T_INK : col, cb ? col : muted ? T_TEXT : T_INK,
                       cb ? T_INK : T_MID, cb ? ux_mix(col, T_INK, 55) : T_DIM, g, 0);   /* (on DIM: TEXT, the far end
                                                      * from it in every palette) */
         }
-        if (muted || mute_arm[k]) {
-            if (mute_arm[k])
+        if (muted || armed) {
+            if (armed)
                 cv_frame(PR_X(16), ty, PR_W, PR_TH, cb ? T_INK : T_REC);
             GFX_HOOK_ALIGN(PR_X(16), ty, PR_X(16) + PR_W, ty + PR_TH, AL_HV, "perform cell letter centred");
             cv_text_in(PR_X(16), ty + CAP_IN(S, PR_TH), PR_W, &AF_S, "M", cb ? T_INK : muted ? T_REC : T_MID, g);
         }
     }
-    GFX_HOOK_ALIGN(0, PR_Y(NTRK), 0, PR_Y(NTRK) + PR_H, AL_V, "perform SCN on its row's middle");
-    cv_text_on(6, PR_Y(NTRK) + CAP_IN(S, PR_H), &AF_S, "SCN", act ? T_TEXT : T_MID, g0);
+    GFX_HOOK_ALIGN(0, PR_Y(ntracks), 0, PR_Y(ntracks) + PR_H, AL_V, "perform SCN on its row's middle");
+    cv_text_on(6, PR_Y(ntracks) + CAP_IN(S, PR_H), &AF_S, "SCN", act ? T_TEXT : T_MID, g0);
     for (p = 0; p < BANK_SLOTS; p++) {                 /* (the 16 scenes: bank.c SCENES) */
-        char s[3];
-        uint32_t st = !scene_used(p) ? PC_EMPTY : p != now ? PC_KEPT : stage_pending() ? PC_NEXT : PC_ON;
+        char s[5];
+        uint32_t st = remote ? PC_EMPTY : !scene_used(p) ? PC_EMPTY : p != now ? PC_KEPT : stage_pending() ? PC_NEXT : PC_ON;
         fmt_int(s, (int32_t)p + 1);
-        perf_cell(PS_X(p), PR_Y(NTRK), s, st, T_TEXT, T_INK, act ? T_TEXT : T_MID, T_DIM, g0, 0);
+#if FELUCCA_CAFA
+        if(remote){const uint8_t *c=cafa_nv_cell(ntracks*16u+p);if(c){
+            st=(c[2]&4u)?PC_NEXT:(c[2]&2u)?PC_ON:(c[2]&1u)?PC_KEPT:PC_EMPTY;
+            cafa_native_text(s,c+3,4);
+        }}
+#endif
+        perf_cell(PS_X(p), PR_Y(ntracks), s, st, T_TEXT, T_INK, act ? T_TEXT : T_MID, T_DIM, g0, 0);
         if (st == PC_KEPT)                             /* (a kept one boxed, as the mockup's: after its number, the
                                                         * outline over its edge) */
-            cv_frame(PS_X(p), PR_Y(NTRK) + (PR_H - PR_TH) / 2, PR_W, PR_TH, T_DIM);
+            cv_frame(PS_X(p), PR_Y(ntracks) + (PR_H - PR_TH) / 2, PR_W, PR_TH, T_DIM);
     }
 }
 /* what the PERFORM map shows of every track and the scenes (draw_layer: redrawn when it changes) */
@@ -1153,8 +1274,18 @@ static uint32_t perf_sig(void)
 static void layer_edit(void)                            /* the engines from F3, INIT next (LY_INIT), the sound under them */
 {                                                        /* (cells show the engine's icon, not the key's note) */
     uint32_t n = NENG_SHOWN < LY_INIT ? NENG_SHOWN : LY_INIT, cells = n + 1u, i, h = cells > 12u ? 20u : 28u;   /* 4 rows of 20: 8 px clear above the sound row */
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()) { cells=cafa_layer_rows(); n=cells; h=cells>12u?20u:28u; }
+#endif
     for (i = 0; i < cells; i++) {
         int32_t x = LC_X(i % 4u), y = 4 + (int32_t)(h + 4u) * (int32_t)(i / 4u);
+#if FELUCCA_CAFA
+        if(cafa_layer_remote()) {
+            const uint8_t *r=cafa_nv_row(i); char label[17]; cafa_native_text(label,r,16);
+            lcell(x,y,(int32_t)h,0,ICON_NONE,label,cafa_layer_state(r));
+            continue;
+        }
+#endif
         const engine_t *en = ENGINES[eng_vis(i) % NENGINES];
         if (i < n)
             lcell(x, y, (int32_t)h, 0, engine_icon(en->name), h > 24u ? en->name : eng_abbr(en->name),
@@ -1162,6 +1293,24 @@ static void layer_edit(void)                            /* the engines from F3, 
         else
             lcell(x, y, (int32_t)h, 0, ICON_X_WARN, "INIT", LS_OFF);
     }
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()) {
+        if(cafa_native_profile_view[7] == CAFA_NATIVE_VARIANT_DRUM) {
+            for(i=0;i<NLANE;i++) {
+                const uint8_t *c=cafa_nv_cell(i);
+                int32_t x=6+29*(int32_t)i;
+                uint16_t ink,fill=lc_box(x,100,25,18,lc_fill(c && (c[2]&1u) ? LS_DIM : LS_OFF,&ink));
+                char label[5]={0};
+                if(c)cafa_native_text(label,c+3,4);
+                cv_text_in(x,100+CAP_IN(S,18),25,&AF_S,label,ink,fill);
+            }
+        } else {
+            char line[25]; cafa_nv_line(line,sizeof line,0);
+            cv_text_fit(8,104,&AF_S,line,T_MID,T_BG,224);
+        }
+        return;
+    }
+#endif
     if (!drum_track(TSEL)) {
         engine_sound_row(104);
         return;
@@ -1186,44 +1335,98 @@ static const char *const TL_NAME[TL_N] = {"CLEAR", "REVERSE", "SHIFT", "SHIFT", 
  * LEN, the cells of its repeats faint (DRUM: the lanes' row under them as always) */
 static void layer_euclid(void)
 {
-    uint32_t len = tl_len(TSEL), i, rows = (len + 15u) / 16u, h = rows > 3u ? 16u : 22u;
+    uint32_t len = tl_len(TSEL), i, rows, h;
+#if FELUCCA_CAFA
+    if (cafa_layer_remote()) {
+        const uint8_t *r = cafa_nv_row(0);
+        len = r ? cafa_native_u14(r + 41u) : 0u;
+        if (len > NSTEP) len = NSTEP;
+    }
+#endif
+    rows = (len + 15u) / 16u; h = rows > 3u ? 16u : 22u;
     for (i = 0; i < len; i++) {
         int32_t x = 8 + 14 * (int32_t)(i % 16u), y = 6 + (int32_t)(h + 2u) * (int32_t)(i / 16u);
-        uint16_t c = eu_hit(i) ? (i < eu.steps ? T_THEME : T_MID) : T_RAISE;
+        uint16_t c;
+#if FELUCCA_CAFA
+        if (cafa_layer_remote()) {
+            const uint8_t *cell = cafa_nv_cell(i);
+            uint32_t flags = cell ? cell[2] : 0u;
+            c = flags & 1u ? (flags & 32u ? T_THEME : T_MID) : T_RAISE;
+        } else
+#endif
+        c = eu_hit(i) ? (i < eu.steps ? T_THEME : T_MID) : T_RAISE;
         cv_rrect(x, y, 12, (int32_t)h, 2, c, T_BG);
     }
 }
 static void layer_seq(void)
 {
-    uint32_t p, st = LS_OFF, drum = (uint32_t)drum_track(TSEL);
+    uint32_t p, st = LS_OFF, remote = cafa_layer_remote(), drum = remote ? 0u : (uint32_t)drum_track(TSEL);
+    uint32_t eu_open = eu.on, eu_len = 0u;
+#if FELUCCA_CAFA
+    if(remote) {
+        const uint8_t *r = cafa_nv_row(0);
+        drum = cafa_native_profile_view[7] == 1u;
+        eu_open = r && (r[40] & 64u);
+        eu_len = eu_open ? cafa_native_u14(r + 41u) : 0u;
+        if (eu_len > NSTEP) eu_len = NSTEP;
+    }
+#endif
     char n[3] = {0, 0, 0}, nm[8];
-    if (eu.on)
+    if (eu_open)
         layer_euclid();
-    for (p = 0; p < TL_DOUBLE && !eu.on; p++) {
-        if (!tl_cell(TSEL, p))
+    for (p = 0; p < TL_DOUBLE && !eu_open; p++) {
+        if (!remote && !tl_cell(TSEL, p))
             continue;
         n[0] = W_NOTE[p];
         str_cpy(nm, TL_NAME[p], sizeof nm);
-        if (p >= TL_LCLR) {                             /* the lane's: "CLR BD" */
+        if (!remote && p >= TL_LCLR) {                             /* the lane's: "CLR BD" */
             str_cpy(nm + str_len(nm), " ", 2);
             str_cpy(nm + str_len(nm), drum_lane_abbr(TSEL, ui.lane), sizeof nm - str_len(nm));
         }
+#if FELUCCA_CAFA
+        if(remote) {
+            const uint8_t *r=cafa_nv_row(p); char label[17]={0},key[17]={0};
+            if(!r || (r[40]&16u))continue;
+            cafa_native_text(label,r,16);cafa_native_text(key,r+16,16);
+            lcell(LC_X(p%4u),4+32*(int32_t)(p/4u),28,key,TL_ICON[p],label,cafa_layer_state(r));
+        } else
+#endif
         lcell(LC_X(p % 4u), 4 + 32 * (int32_t)(p / 4u), 28, n, TL_ICON[p], nm, st);
     }
     for (p = 0; drum && p < NLANE; p++) {               /* the lanes (black keys 1..8): 8 cells of 18 px, 2 px apart */
         int32_t x = 6 + 20 * (int32_t)p;
-        uint16_t ink, fill = lc_box(x, 100, 18, 18, lc_fill(p == ui.lane % NLANE ? LS_SEL : LS_OFF, &ink));
+        uint32_t selected=p==ui.lane%NLANE;
+#if FELUCCA_CAFA
+        if(remote)selected=cafa_nv_cell(eu_len+p)&&(cafa_nv_cell(eu_len+p)[2]&2u);
+#endif
+        uint16_t ink, fill = lc_box(x, 100, 18, 18, lc_fill(selected ? LS_SEL : LS_OFF, &ink));
         GFX_HOOK_ALIGN(x, 100, x + 18, 118, AL_HV, "tools lane cell name centred");
+#if FELUCCA_CAFA
+        if(remote) {
+            const uint8_t *c=cafa_nv_cell(eu_len+p); char label[5]={0};if(c)cafa_native_text(label,c+3,4);
+            cv_text_in(x,100+CAP_IN(S,18),18,&AF_S,label,ink,fill);
+        } else
+#endif
         cv_text_in(x, 100 + CAP_IN(S, 18), 18, &AF_S, drum_lane_abbr(TSEL, p), ink, fill);
     }
-    for (p = TL_DOUBLE; !eu.on && p < TL_N; p++) {     /* ((1.3) D5 DOUBLE (x2), E5 HALF (/2) at the row's end, */
+    for (p = TL_DOUBLE; !eu_open && p < TL_N; p++) {     /* ((1.3) D5 DOUBLE (x2), E5 HALF (/2) at the row's end, */
         int32_t x = 168 + 35 * (int32_t)(p - TL_DOUBLE);   /* 31 px each: the lanes' row has no room for their names) */
-        uint16_t ink, fill = lc_box(x, 100, 31, 18, lc_fill(st, &ink));
+        uint16_t ink, fill;
+        char label[17];
+        const char *word=p == TL_DOUBLE ? "x2" : "/2";
         n[0] = W_NOTE[p];
+#if FELUCCA_CAFA
+        if(remote) {
+            const uint8_t *r=cafa_nv_row(p);label[0]=n[0]=0;
+            if(r){cafa_native_text(label,r,16);cafa_native_text(n,r+16,2);}
+            word=label;st=cafa_layer_state(r);
+        }
+#endif
+        fill = lc_box(x, 100, 31, 18, lc_fill(st, &ink));
         GFX_HOOK_ALIGN(0, 100, 0, 118, AL_V, "tools resize cell on its middle");
         cv_text_on(x + 5, 100 + CAP_IN(S, 18), &AF_S, n, fill == T_RAISE || fill == T_SURF ? T_MID : ink, fill);
         GFX_HOOK_ALIGN(0, 100, 0, 118, AL_V, "tools resize cell on its middle");
-        cv_text_r(x + 26, 100 + CAP_IN(S, 18), &AF_S, p == TL_DOUBLE ? "x2" : "/2", ink, fill);
+        cv_text_r(x + 26, 100 + CAP_IN(S, 18), &AF_S, word, ink, fill);
     }
 }
 
@@ -1234,33 +1437,52 @@ static void layer_seq(void)
 #define LR_H 26
 static void layer_rec(void)
 {
-    uint32_t r, v;
+    uint32_t r, v, remote = cafa_layer_remote();
     char n[3] = {0, 0, 0}, b[16];
     for (r = 0; r < 4u; r++) {
         int32_t y = 4 + (LR_H + 4) * (int32_t)r, x = 6, vx = 6 + LR_KW + 4;
-        uint32_t dim = r == 0u && !rec_clearable();
+        uint32_t dim = !remote && r == 0u && !rec_clearable();
+        const char *label = r ? RL_LABEL[r-1u] : "CLEAR";
+#if FELUCCA_CAFA
+        const uint8_t *row = remote ? cafa_nv_row(r) : 0;
+        char rlabel[17];
+        if(remote) { dim = !row || (row[40]&16u); rlabel[0]=0; if(row)cafa_native_text(rlabel,row,16); label=rlabel; }
+#endif
         uint16_t ink, fill = lc_box(x, y, LR_KW, LR_H, lc_fill(dim ? LS_DIM : LS_OFF, &ink));
         n[0] = W_NOTE[r];
         GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
         cv_text_on(x + 5, y + CAP_IN(S, LR_H), &AF_S, n, fill == T_RAISE || fill == T_SURF ? T_MID : ink, fill);
         GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
-        if (text_w(&AF_S, r ? RL_LABEL[r - 1u] : "CLEAR") <= LR_KW - 5 - 30)   /* (CRYPT's wider letters: no room) */
+        if (text_w(&AF_S, label) <= LR_KW - 5 - 30)   /* (CRYPT's wider letters: no room) */
             cv_icon_in(x + 15, y, 0, LR_H, 12, r ? RL_ICON[r - 1u] : ICON_CLEAR, ink, fill);
         GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
-        cv_text_r(x + LR_KW - 5, y + CAP_IN(S, LR_H), &AF_S, r ? RL_LABEL[r - 1u] : "CLEAR", ink, fill);
+        cv_text_r(x + LR_KW - 5, y + CAP_IN(S, LR_H), &AF_S, label, ink, fill);
         if (r == 0u) {                                   /* "T2 SEQUENCE" / "T2 EMPTY" (a song playing: why not) */
             int32_t w = 234 - vx;
             b[0] = 'T';
-            b[1] = (char)('1' + song.sel);
-            str_cpy(b + 2, rec_clearable() ? " SEQUENCE" : " EMPTY", sizeof b - 2);
+            b[1] = (char)('1' + (remote ? 0u : song.sel));
+            str_cpy(b + 2, remote ? "" : rec_clearable() ? " SEQUENCE" : " EMPTY", sizeof b - 2);
+#if FELUCCA_CAFA
+            if(remote) { b[0]=0; if(row)cafa_native_text(b,row+16,15); }
+#endif
             fill = lc_box(vx, y, w, LR_H, lc_fill(dim ? LS_DIM : LS_OFF, &ink));
             GFX_HOOK_ALIGN(vx, y, vx + w, y + LR_H, AL_HV, "rec layer clear cell centred");
             cv_text_in(vx, y + CAP_IN(S, LR_H), w, &AF_S, b, ink, fill);
             continue;
         }
         for (v = 0; v < 3u; v++, vx += LR_VW + 4) {
-            fill = lc_box(vx, y, LR_VW, LR_H, lc_fill(v == rp_get(RL_F[r - 1u]) ? LS_SEL : LS_OFF, &ink));
+            fill = lc_box(vx, y, LR_VW, LR_H, lc_fill(v == (
+#if FELUCCA_CAFA
+                remote ? (row ? cafa_native_u14(row+41) : 16383u) :
+#endif
+                rp_get(RL_F[r - 1u])) ? LS_SEL : dim ? LS_DIM : LS_OFF, &ink));
             GFX_HOOK_ALIGN(vx, y, vx + LR_VW, y + LR_H, AL_HV, "rec layer value cell centred");
+#if FELUCCA_CAFA
+            if(remote) {
+                char value[25]; cafa_nv_line(value,sizeof value,(r-1u)*3u+v);
+                cv_text_in(vx,y+CAP_IN(S,LR_H),LR_VW,&AF_S,value,ink,fill);
+            } else
+#endif
             cv_text_in(vx, y + CAP_IN(S, LR_H), LR_VW, &AF_S, rl_name(r - 1u, v), ink, fill);
         }
     }
@@ -1268,6 +1490,9 @@ static void layer_rec(void)
 
 static void layer_cards(uint32_t l)
 {
+#if FELUCCA_CAFA
+    if(cafa_layer_remote()){cafa_native_profile_columns();return;}
+#endif
     char val[12];
     const char *unit;
     uint32_t c;
@@ -1341,6 +1566,37 @@ static void layer_cards(uint32_t l)
     }
 }
 
+#if FELUCCA_CAFA
+static void cafa_native_layer_draw(uint32_t l)
+{
+    layer_cards(l);
+    cv_begin(240,H_GRAPH+foot_less(),T_BG);cv_bg=T_BG;
+    cv_oy=l==LAYER_PERF?0:graph_pad();
+    if(l==LAYER_FX)layer_fx();else if(l==LAYER_GLO)layer_glo();
+    else if(l==LAYER_SCL)layer_scl();else if(l==LAYER_SEQ)layer_seq();
+    else if(l==LAYER_REC)layer_rec();else if(l==LAYER_PERF)layer_perf();else layer_edit();
+    cv_oy=0;cv_blit(0,Y_GRAPH);
+    cv_begin(240,foot_h(),T_BG);
+    {
+        char hint[32], *right = 0;
+        cafa_native_text(hint, cafa_native_profile_view + CAFA_NATIVE_FOOTER, 31);
+        if (l == LAYER_PERF) {
+            char *split;
+            for (split = hint; *split; split++) {
+                if (split[0] == ' ' && split[1] == ' ' && split[2]) {
+                    *split = 0;
+                    right = split + 2;
+                    break;
+                }
+            }
+        }
+        cv_free_hint(8, foot_line_y(), hint, T_MID, T_BG, right ? 110 : 224);
+        if (right)
+            cv_free_hint(232 - head_hint_w(right, 120), foot_line_y(), right, T_MID, T_BG, 120);
+    }
+    cv_blit(0,foot_y());
+}
+#endif
 static void draw_layer(void)
 {
     uint32_t l = ui.layer % LAYER_N, sig = l * 7919u + ux.gen * 977u, rs;
@@ -1480,10 +1736,21 @@ static void draw_shift(void)
 {
     smap_t m[12];
     char ti[20];
-    uint32_t i, sig = 0x5A1F7u + ui.page * 7919u + ui.home * 31u + song.sel * 977u + ux.gen * 13u + ui_prefs * 3u + song.playing * 104729u;
+    uint32_t i, sig = 0x5A1F7u + ui.page * 7919u + ui.home * 31u + ux.gen * 13u + ui_prefs * 3u;
+    if (!cafa_layer_remote()) sig += song.sel * 977u + song.playing * 104729u;
     if (!ui.force && sig == ui.layer_sig)
         return;
     ui.layer_sig = sig;
+#if FELUCCA_CAFA
+    char keys[12][17], jobs[12][17];
+    if(cafa_layer_remote()) {
+        for(i=0;i<12u;i++) {
+            const uint8_t *r=cafa_nv_row(i);keys[i][0]=jobs[i][0]=0;
+            if(r){cafa_native_text(keys[i],r,16);cafa_native_text(jobs[i],r+16,16);}
+            m[i]=(smap_t){keys[i],jobs[i],r?(uint8_t)((r[40]&2u)?2u:(r[40]&1u)?1u:0u):0u};
+        }
+    } else
+#endif
     shift_map(m);
     cv_begin(240, H_GRAPH + foot_less(), T_BG);
     cv_bg = T_BG;
@@ -1506,6 +1773,10 @@ static void draw_shift(void)
     else
 #endif
     cv_free_hint(8, foot_line_y(), "LET GO: MENU", T_MID, T_BG, 110);
+#if FELUCCA_CAFA
+    if(cafa_layer_remote())cafa_native_text(ti,cafa_native_profile_view+57,sizeof ti-1u);
+    else
+#endif
     if (ui.home)
         str_cpy(ti, "HOME", sizeof ti);
     else
@@ -1514,3 +1785,24 @@ static void draw_shift(void)
     cv_blit(0, foot_y());
     ui.foot_sig = 0;
 }
+
+#if FELUCCA_CAFA
+/* Dispatch native overlays without entering standalone musical input handlers. */
+static int cafa_native_overlay_draw(int full)
+{
+    uint32_t screen=cafa_native_profile_view[6];
+    static const uint8_t layers[7]={LAYER_FX,LAYER_GLO,LAYER_SCL,LAYER_EDIT,LAYER_SEQ,LAYER_REC,LAYER_PERF};
+    if(screen<49u || screen==67u)return 0;
+    if(screen==72u){cafa_native_app_menu_draw();return 1;}
+    if(full)draw_frame();draw_head();
+    if(screen<=55u){cafa_native_layer_draw(layers[screen-49u]);return 1;}
+    if(screen==56u){cafa_native_profile_columns();draw_shift();return 1;}
+    if((screen>=57u&&screen<=62u)||screen==70u||screen==71u){cafa_native_device_draw();return 1;}
+    if(screen==63u){if(full)cafa_native_confirm_backdrop=1;draw_confirm_blocks();return 1;}
+    if(screen==64u){cafa_native_name_draw();return 1;}
+    if(screen==65u||screen==66u){cafa_native_profile_columns();cafa_native_take_draw();return 1;}
+    if(screen==68u){draw_countin();return 1;}
+    if(screen==69u){draw_uboot();return 1;}
+    return 0;
+}
+#endif

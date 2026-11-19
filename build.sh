@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 # Build Skiff on macOS or Linux (see BUILDING.md).
 #   ./build.sh [--release X.Y] [--board fm1|smk37] [--model pro|elite|mke]
-#   BOARD            target board: fm1 (default) or smk37 (the M-VAVE SMK-37 -> build/skiff-smk37.fwsc)
+#   BOARD            target board: fm1 (default) or smk37 (the M-VAVE SMK-37 -> build/windjammer-smk37.fwsc)
 #   MODEL            smk37: pro (default), elite or mke: the model name the keyboard reports
 #   JIELI_TOOLCHAIN  JieLi Linux toolchain (default: ~/.jieli/toolchain)
 #   AC79_SDK         JieLi AC79 SDK checkout (default: ~/fw-AC79_AIoT_SDK)

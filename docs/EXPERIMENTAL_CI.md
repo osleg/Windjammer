@@ -1,5 +1,7 @@
 # Experimental firmware CI
 
+Historical development notes from the upstream Skiff checkout. The [Windjammer build guide](../BUILDING.md) and [public protocol](OPEN_PROTOCOL.md) describe the maintained controller. Archived Android prototype commands apply to the original checkout.
+
 The `Experimental firmware` workflow builds **FM-1 development artifacts**, not a
 release. It never flashes a device, creates a GitHub release, or deploys a site.
 It runs on pushes to `experimental/**` and `main`, relevant pull requests, and

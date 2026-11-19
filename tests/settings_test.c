@@ -39,8 +39,8 @@ int main(void)
     original.favorites.user = 1u << 31; original.favorites.filter = 1;
     p = original;
     assert(settings_import(&p, sizeof p) == 1); settings_init();
-    assert(settings.palette == UI_SKIFF_INDEX && fx_lowcut && settings.zoom && panel.enc[0] == 3);
-    assert(p.palette == palette_to_stored(UI_SKIFF_INDEX));       /* migrated in place */
+    assert(settings.palette == UI_WINDJAMMER_INDEX && fx_lowcut && settings.zoom && panel.enc[0] == 3);
+    assert(p.palette == palette_to_stored(UI_WINDJAMMER_INDEX));       /* migrated in place */
     {   /* (Skiff, R1) THEME: SKIFF HI-CON PAPER CRYPT NEON QUARK. Every old id maps to one (the eleven before THEME: PAL_TAG +
          * index; Felucca's twenty: below 20; a palette gone: SKIFF); THEME's ids round trip; anything else is SKIFF */
         persist_t q = original;
@@ -48,12 +48,12 @@ int main(void)
                !strcmp(UI_PALETTES[2].name, "PAPER") && !strcmp(UI_PALETTES[UI_CRYPT_INDEX].name, "CRYPT"));
         for (uint32_t i = 0; i < 20u; i++) assert(palette_from_stored(i) < NPALETTES);
         assert(palette_from_stored(13) == 2u && palette_from_stored(11) == 1u && palette_from_stored(19) == 1u &&
-               palette_from_stored(0) == UI_SKIFF_INDEX);
+               palette_from_stored(0) == UI_WINDJAMMER_INDEX);
         assert(palette_from_stored(UI_PAL_TAG + 6u) == 2u && palette_from_stored(UI_PAL_TAG + 7u) == 1u &&   /* PAPER HI-CON */
-               palette_from_stored(UI_PAL_TAG + 10u) == UI_SKIFF_INDEX && palette_from_stored(UI_PAL_TAG + 0u) == UI_SKIFF_INDEX &&
-               palette_from_stored(UI_PAL_TAG + 9u) == UI_SKIFF_INDEX && palette_stored_ok(UI_PAL_TAG + 10u));   /* GREY MONO */
+               palette_from_stored(UI_PAL_TAG + 10u) == UI_WINDJAMMER_INDEX && palette_from_stored(UI_PAL_TAG + 0u) == UI_WINDJAMMER_INDEX &&
+               palette_from_stored(UI_PAL_TAG + 9u) == UI_WINDJAMMER_INDEX && palette_stored_ok(UI_PAL_TAG + 10u));   /* GREY MONO */
         for (uint32_t i = 0; i < NPALETTES; i++) assert(palette_from_stored(palette_to_stored(i)) == i);
-        assert(palette_from_stored(40) == UI_SKIFF_INDEX && !palette_stored_ok(40) && palette_stored_ok(3) &&
+        assert(palette_from_stored(40) == UI_WINDJAMMER_INDEX && !palette_stored_ok(40) && palette_stored_ok(3) &&
                !palette_stored_ok(UI_THEME_TAG + NPALETTES));
         q.palette = palette_to_stored(UI_CRYPT_INDEX);
         assert(settings_import(&q, sizeof q) == 1 && settings.palette == UI_CRYPT_INDEX);

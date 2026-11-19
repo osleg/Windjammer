@@ -18,7 +18,6 @@ static struct {
     volatile uint32_t bytes, drops, msgs;          /* TIMER5 writes; read-only CDC diagnostics */
     uint8_t st, need, got, d0, sysex;
 } um;
-
 static void uart_midi_init(void)                   /* before timer5_start(): PORTH RMW */
 {
     fm1_uart1_midi_init(um_ring, UM_RING);
@@ -34,19 +33,31 @@ static uint32_t um_len(uint32_t s)                 /* data bytes of a channel st
  * Stop, Song Position; no SysEx. Due at once (usb.c mo_put; TIMER5, never with the audio ISR's queueing) */
 static void um_thru(uint32_t pkt)
 {
+#if FELUCCA_CONTROLLER
+    if (cafa_panel_midi_active && !mo_put(pkt, mo.now)) {
+        cafa_panel_midi_overflow = 1;
+        um.drops++;
+    }
+#else
     if (MSET(15, 17) & MO_THRU_ON)
         (void)mo_put(pkt, mo.now);
+#endif
 }
 
 static void um_byte(uint32_t b)
 {
     if (b >= 0xF8u) {
         if (b == 0xF8u || b == 0xFAu || b == 0xFBu || b == 0xFCu) {
+#if !FELUCCA_CONTROLLER
             if (midi_enqueue(0xFu | b << 8, 2u))
                 um.msgs++;
             else
                 um.drops++;
+#endif
             um_thru(0xFu | b << 8);
+#if FELUCCA_CONTROLLER
+            if (cafa_panel_midi_active) um.msgs++;
+#endif
         }
         return;                                    /* realtime keeps running status */
     }
@@ -72,13 +83,18 @@ static void um_byte(uint32_t b)
             pkt = 0x3u | 0xF2u << 8 | d1 << 16 | d2 << 24;
             um.st = 0;
         }
+#if !FELUCCA_CONTROLLER
         if (midi_enqueue(pkt, 2u)) {
             um.msgs++;
         } else {
             midi_in_overflow = 1;
             um.drops++;
         }
+#endif
         um_thru(pkt);
+#if FELUCCA_CONTROLLER
+        if (cafa_panel_midi_active) um.msgs++;
+#endif
     }
 }
 
@@ -90,7 +106,11 @@ static void uart_midi_take(uint32_t n)
         um.rd = (um.rd + um.pend - UM_RING) & (UM_RING - 1u);
         um.pend = UM_RING;
         um.st = um.got = um.sysex = 0;              /* lost bytes: wait for a complete new status */
+#if FELUCCA_CONTROLLER
+        if (cafa_panel_midi_active) cafa_panel_midi_overflow = 1;
+#else
         midi_in_overflow = 1;
+#endif
     }
     while (um.pend) {
         um_byte(um_ring[um.rd]);

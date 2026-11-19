@@ -268,6 +268,75 @@ def installs():
         ok(True, "sample upload: a malformed SMP_INFO reply is an error")
 
 
+def identity_recovery():
+    """Pre-fix controller wire: ordinary identity is lost, OTA answers it while waiting for read 0."""
+    raw = package_crc("FM-1_700")
+    image = I.logical_image(raw)
+    path = pkgfile("controller.fwsc", raw)
+
+    class PreFix(FakeFM1):
+        def __init__(self, *args, answer="FM-1_700", noise=False, **kwargs):
+            self.answer, self.noise, self.verified, self.premature = answer, noise, False, 0
+            super().__init__(*args, identity="FM-1_700", name="FM-1 Controller", after_write="FM-1_700", **kwargs)
+
+        def rx(self, d):
+            if d == I.UPGRADE and self.upgrades == 0 and not self.waiting:
+                self.upgrades += 1
+                self.queue = [(0, 512), (512, 512), (0x1000, 512), (I.FINISH_CHECK, 8)]
+                if self.noise:
+                    self.tx(b"\xf0\x7d\x01\xf7")
+                self.next()
+                return
+            if d == I.HS_QUERY and self.upgrades < 2 and not self.identity.startswith("ota-"):
+                if self.waiting and self.answer:
+                    ident = ("FM-1_700" if self.answer == "bad-checksum" else self.answer).encode()
+                    body = bytes([0, 0x59, 0x11, 27, 0, 0]) + ident + bytes(27 - len(ident))
+                    body += bytes([0 if self.answer == "bad-checksum" else ~sum(body[6:]) & 0xff])
+                    self.tx(b"\xf0" + I.pack7(body) + b"\xf7")
+                    self.verified = True
+                return
+            if d == I.UPGRADE and self.waiting:
+                self.premature += 1
+            elif self.waiting and d not in (I.HS_QUERY, I.UPGRADE) and not self.verified:
+                self.premature += 1
+            super().rx(d)
+
+    dev = PreFix(image, noise=True, loader=("ota-FM-1_700", "Felucca Update"))
+    rc, out, err = cli([path, "--recover-identity", "--port", dev.name, "--yes"], dev)
+    ok(rc == 0 and dev.bad == 0 and dev.premature == 0 and dev.upgrades == 2 and dev.served == 11
+       and "done: the device runs FM-1_700" in out,
+       "recovery: exact running identity, first read retained, one check upgrade, loader and final identity")
+
+    for answer in (None, "FM-1_701", "SMK-37 Pro_700", "bad-checksum"):
+        dev = PreFix(image, answer=answer)
+        rc, out, err = cli([path, "--recover-identity", "--port", dev.name, "--yes"], dev)
+        ok(rc in (4, 6) and dev.upgrades == 1 and dev.served == 0 and dev.premature == 0,
+           f"recovery: {answer or 'no identity'} aborts before a package response")
+
+    dev = PreFix(image)
+    rc, out, err = cli([path, "--recover-identity", "--port", dev.name], dev, answer=False)
+    ok(rc == 1 and dev.upgrades == 0 and dev.sent == [] and "cancelled" in out,
+       "recovery: declined consent sends no MIDI")
+    dev = PreFix(image)
+    rc, out, err = cli([path, "--recover-identity", "--port", "Controller", "--yes"], dev)
+    ok(rc == 3 and dev.upgrades == 0, "recovery: partial port name cannot start a check")
+    class WrongOutput(PreFix):
+        def output_names(self):
+            return ["Unrelated MIDI output"]
+    dev = WrongOutput(image)
+    rc, out, err = cli([path, "--recover-identity", "--port", dev.name, "--yes"], dev)
+    ok(rc == 3 and dev.upgrades == 0 and dev.sent == [],
+       "recovery: unrelated sole MIDI output cannot receive the upgrade command")
+    dev = FakeFM1(image, identity="FM-1_700", name="FM-1 Controller")
+    rc, out, err = cli([path, "--recover-identity", "--port", dev.name, "--yes"], dev)
+    ok(rc == 2 and dev.upgrades == 0 and "ordinary identity works" in err,
+       "recovery: an ordinary identity uses the normal installer")
+    dev = PreFix(image)
+    wrong = pkgfile("other-controller.fwsc", package_crc("SMK-37 Pro_700"))
+    rc, out, err = cli([wrong, "--recover-identity", "--port", dev.name, "--yes"], dev)
+    ok(rc == 2 and dev.sent == [], "recovery: another model's package sends no MIDI")
+
+
 def errors():
     raw = package()
     image = I.logical_image(raw)
@@ -557,6 +626,7 @@ def two_units():
 
 wire()
 installs()
+identity_recovery()
 errors()
 smk()
 hardening()

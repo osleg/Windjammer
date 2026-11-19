@@ -35,7 +35,9 @@ SECTIONS
     _data_load = LOADADDR(.data);
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
-    .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
+    /* Keep legacy retained objects at their existing addresses. Companion
+     * scratch follows them and is explicitly initialized by its owner. */
+    .noinit (NOLOAD) : { *(.noinit) *(.noinit.cafa_ui) } > NOINIT
     _guard0 = 0x01C77000; _ustack_lo = 0x01C77100; _ustack_top = 0x01C7A000;   /* (Skiff: 11.75 KiB, was 23.75) */
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
     /DISCARD/ : { *(.comment) *(.note*) }

@@ -85,6 +85,7 @@ static int head_mark_short(char *b)
 static const char *head_title(const char *pn)
 {
     #if FELUCCA_CAFA
+    if (cafa_native_profile_view) return pn;
     if (cafa_native_view && cafa_native_v4) return cafa_page_names[cafa_native_view[1]];
     #endif
     return ui.shift ? "SHIFT" : fr.on ? "FREE TAKE" : ui.home ? pn : page_head();
@@ -92,35 +93,73 @@ static const char *head_title(const char *pn)
 static void draw_head_blocks(void)
 {
     const track_t *t = TSEL;
-    uint32_t rec = (song.rec >> song.sel) & 1u ? 2u : song.rec != 0u, id, sig;
+    int remote = 0;
+    const uint8_t *chrome = 0;
+#if FELUCCA_CAFA
+    remote = cafa_native_profile_view != 0;
+    if (remote) chrome = cafa_nv_section(CAFA_NATIVE_CHROME, 0);
+#endif
+    uint32_t playing = remote ? 0u : song.playing, counting = remote ? 0u : (uint32_t)seq_counting();
+    uint32_t selected = remote ? 0u : song.sel;
+    int32_t bpm = remote ? 0 : song.g[G_BPM], octave = remote ? 0 : song.octave;
+    uint32_t rec = remote ? 0u : (song.rec >> song.sel) & 1u ? 2u : song.rec != 0u, id, sig;
     uint32_t pm =
 #if FELUCCA_CAFA
-        cafa_native_view ? 0 :
+        (cafa_native_view || remote) ? 0 :
 #endif
         project_mark();
-    int msg = ui.msg_t || ui.layer;
-    char pos[12] = "1.1", b[8], pn[16], mk[16];      /* (stopped: PLAY starts from the top) */
-    uint32_t s_k, s_at, s_n = lists.song && song.playing ? song_at(&s_k, &s_at) : 0u;   /* ((2.5, 2B) the song strip) */
+    int msg = !remote && (ui.msg_t || ui.layer);
+    int app_layer = 0, app_locked = 0;
+    char pos[12] = "1.1", b[8], pn[25], mk[17];      /* (stopped: PLAY starts from the top) */
+    uint32_t s_k, s_at, s_n = !remote && lists.song && song.playing ? song_at(&s_k, &s_at) : 0u;   /* ((2.5, 2B) the song strip) */
     int32_t x, lx;
     uint16_t ic;
-    int mark = head_mark(mk);                        /* ((Skiff phase 5) SONG ON, the pattern edited) */
+    int mark = remote ? 0 : head_mark(mk);                        /* ((Skiff phase 5) SONG ON, the pattern edited) */
     #if FELUCCA_CAFA
-    if (cafa_native_view) { pn[0]=0; s_n=0; }
+    if (remote) {
+        const uint8_t *v = cafa_native_profile_view;
+        uint32_t at = chrome ? cafa_native_u14(chrome) : cafa_native_u14(v + 22);
+        playing = v[32] & 1u; rec = (v[32] & 2u) ? 2u : 0u;
+        selected = cafa_native_u14(v + 13); bpm = cafa_native_u14(v + 30) / 10u;
+        counting = v[6] == 68u;
+        cafa_native_text(pn, v + 33, 24); mk[0] = 0;
+        if (v[6] >= CAFA_SCREEN_FX_LAYER && v[6] <= CAFA_SCREEN_ARP_LAYER) {
+            char state[25];
+            app_layer = 1;
+            cafa_native_text(state, v + CAFA_NATIVE_SUBTITLE, 24);
+            app_locked = str_eq(state, "LOCKED");
+        }
+        if (chrome) {
+            rec = chrome[2];
+            cafa_native_text(mk, chrome + 13u, 16u);
+            mark = mk[0] != 0;
+            pm = chrome[11u] == ' ' ? 0u : chrome[11u] | (uint32_t)chrome[12u] << 8;
+        }
+        if (playing && at != 16383u) {
+            fmt_int(pos, (int32_t)(at / 16u) + 1);
+            str_cpy(pos + str_len(pos), ".", 2);
+            fmt_int(pos + str_len(pos), (int32_t)(at % 16u / 4u) + 1);
+        }
+    } else if (cafa_native_view) { pn[0]=0; s_n=0; }
     else
 #endif
     project_cur_name(pn);                            /* (HOME's title) */
-    if (song.playing) {                              /* (in time: REV, PING, RAND count up too) */
+    if (!remote && playing) {                              /* (in time: REV, PING, RAND count up too) */
         fmt_int(pos, (int32_t)(seq_at(t) / 16u) + 1);
         str_cpy(pos + str_len(pos), ".", 2);
         fmt_int(pos + str_len(pos), (int32_t)(seq_at(t) % 16u / 4u) + 1);
     }
-    fmt_int(b, song.g[G_BPM]);
-    if (seq_counting())
+    fmt_int(b, bpm);
+    if (counting)
         id = ICON_X_PLAY, ic = T_ACCENT;
     else if (rec)
         id = rec == 2u ? ICON_X_REC : ICON_X_REC_O, ic = T_REC;
     else
-        id = song.playing ? ICON_X_PLAY : ICON_X_STOP, ic = song.playing ? T_THEME : T_MID;
+        id = playing ? ICON_X_PLAY : ICON_X_STOP, ic = playing ? T_THEME : T_MID;
+#if FELUCCA_CAFA
+    if (remote) sig = fnv(2166136261u, cafa_native_profile_view, cafa_native_profile_len) + ux.gen;
+    else
+#endif
     sig = str_hash(str_hash(id * 31u + ic, pos), b) + (ui.msg_t ? str_hash(7u, ui.msg) : ui.layer * 7919u +
           (uint32_t)layer_locked() * 3u + (ui.layer == LAYER_PERF ? launch_mode() * 131u : 0u)) + (ui.bpm_t != 0) * 31u +
           (uint32_t)(song.octave + 8) * 11u +
@@ -128,17 +167,17 @@ static void draw_head_blocks(void)
           str_hash(9u + (uint32_t)ui.home, head_title(pn)) +   /* (the title) */
           (mark ? str_hash(3u + song.sel, mk) : 0u) + pm * 104729u +
           (s_n ? s_n * 31u + 240u * s_at / s_n * 7919u + s_k : 0u);
-    ui.roll_bpm = song.g[G_BPM];                      /* (no rolling digits: none left to finish in another style) */
+    ui.roll_bpm = (int16_t)bpm;                      /* (no rolling digits: none left to finish in another style) */
     ui.roll[ROLL_BPM].from[0] = 0;
     if (!ui.force && sig == ui.head_sig)
         return;
     ui.head_sig = sig;
     cv_begin(240, H_HEAD, T_BG);
-    if (ux.crypt && rec && !seq_counting())           /* (Skiff C3) CRYPT: REC a blood drop */
+    if (ux.crypt && rec && !counting)           /* (Skiff C3) CRYPT: REC a blood drop */
         cr_drop(8, (H_HEAD - 9) / 2, rec == 2u);
-    else if (ux.neon && rec && !seq_counting())       /* (Skiff N3) NEON: a red light */
+    else if (ux.neon && rec && !counting)       /* (Skiff N3) NEON: a red light */
         ne_rec(11, H_HEAD / 2 - 1, rec == 2u);
-    else if (ux.quark && rec && !seq_counting())      /* (Skiff Q2) QUARK: a red nucleus */
+    else if (ux.quark && rec && !counting)      /* (Skiff Q2) QUARK: a red nucleus */
         qk_rec(11, H_HEAD / 2 - 1, rec == 2u);
     else
         cv_icon_mid(4, H_HEAD / 2, 16, id, ic, T_BG);
@@ -150,7 +189,7 @@ static void draw_head_blocks(void)
     if (ux.quark)                                     /* (Skiff Q2) QUARK: a dotted rule */
         qk_rule(H_HEAD - 2);
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-    cv_text(HB_POS_X, HEAD_MY, &AF_M, pos, song.playing ? T_TEXT : T_MID);
+    cv_text(HB_POS_X, HEAD_MY, &AF_M, pos, playing ? T_TEXT : T_MID);
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
     if (ux.neon)                                      /* ((Skiff N2) NEON: slanted) */
         cv_fx_on(HEAD_MY, &AF_M, 0);
@@ -163,9 +202,12 @@ static void draw_head_blocks(void)
     GFX_HOOK_ALIGN(0, 0, 0, HEAD_MY + AF_M.asc, AL_B, "BPM on its value's baseline");
     x = cv_text(x + 3, HEAD_MY + AF_M.asc - AF_S.asc, &AF_S, "BPM", T_MID);
     lx = x;                                            /* (where the transport's half ends) */
-    if (msg && !ui.msg_t) {                           /* a layer: its title at the right, as the mockup's PERFORM BAR, */
-        char h[24];                                    /* in words ([GLO] SET: GLO SET); PERFORM: when a switch comes */
-        if (ui.layer == LAYER_PERF) {                  /* in (LAUNCH); locked: the lock before it */
+    if ((msg && !ui.msg_t) || app_layer) {            /* a layer: its title at the right, as the mockup's PERFORM BAR, */
+        char h[25];                                    /* in words ([GLO] SET: GLO SET); PERFORM: when a switch comes */
+        int locked = app_layer ? app_locked : layer_locked();
+        if (app_layer)
+            kc_words(h, sizeof h, pn, 0);
+        else if (ui.layer == LAYER_PERF) {             /* in (LAUNCH); locked: the lock before it */
             str_cpy(h, "PERFORM ", sizeof h);
             str_cpy(h + 8, LAUNCH_NAME[launch_mode()], sizeof h - 8u);
         } else {
@@ -179,15 +221,15 @@ static void draw_head_blocks(void)
             }
         }
         GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-        x = cv_text_r(234, HEAD_SY, &AF_S, h, layer_locked() ? T_THEME : T_MID, T_BG);
-        if (layer_locked())
+        x = cv_text_r(234, HEAD_SY, &AF_S, h, locked ? T_THEME : T_MID, T_BG);
+        if (locked)
             cv_icon_mid(x - 18, H_HEAD / 2, 16, ICON_X_LOCK, T_THEME, T_BG);
     } else if (msg) {
         x = x + 9 > HB_MSG_X ? x + 9 : HB_MSG_X;
         head_msg(x, 236 - x);
     } else {                                           /* the page's title at the right, as the mockup's (HOME: the */
         int32_t r = HEAD_BAT_X - 4;                     /* project's name); the battery after it, at every level (#5), */
-        char h[16];                                     /* the octave or the song row before it while they matter */
+        char h[25];                                     /* the octave or the song row before it while they matter */
         draw_battery(HEAD_BAT_X);
         str_cpy(h, head_title(pn), sizeof h);   /* ((U5) SHIFT's map) */
         x = r;
@@ -207,14 +249,19 @@ static void draw_head_blocks(void)
                 cv_rect(x + 11, (H_HEAD - 15) / 2 - 2, 5, 5, T_THEME);
             x -= 8;
         }
-        while (mark && x - text_w(&AF_S, mk) - (song.octave ? text_w(&AF_S, "OCT") + 4 + text_w(&AF_M, "+3") + 8 : 0) <
+        while (mark && x - text_w(&AF_S, mk) - (octave ? text_w(&AF_S, "OCT") + 4 + text_w(&AF_M, "+3") + 8 : 0) <
                lx + 8)
             mark = head_mark_short(mk);                 /* ((2.2) shorter, not gone) */
         if (mark) {                                     /* ((Skiff phase 5) where it fits) */
             GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-            x = cv_text_r(x, HEAD_SY, &AF_S, mk, T_TRK(song.sel), T_BG) - 8;
+            x = cv_text_r(x, HEAD_SY, &AF_S, mk, T_TRK(selected % UI_NTRK), T_BG) - 8;
         }
-        if (song.octave)
+        if (chrome) {
+            char oct[9];
+            cafa_native_text(oct, chrome + 3u, 8u);
+            if (oct[0] && x - text_w(&AF_S, oct) >= lx + 8)
+                cv_text_r(x, HEAD_SY, &AF_S, oct, T_THEME, T_BG);
+        } else if (octave)
             head_group(x, lx + 8);                     /* (#70) stay clear of the BPM */
     }
     if (s_n) {                                        /* ((2.5, the user's 2B) a song playing: the strip, where it is; */
@@ -254,7 +301,11 @@ static void draw_column_blocks(uint32_t c, const char *label, const char *val, c
                                int32_t ratio, uint32_t icon, int hot, int mot, int32_t kid, uint32_t kind)
 {
     uint16_t fill = hot ? (ux.quark ? T_THEME : T_ACCENT) : T_SURF;   /* ((Skiff Q2) QUARK: the hot cell cyan) */
-    uint32_t tk = icon - ICON_TRK < NTRK ? icon - ICON_TRK : song.sel;   /* whose card: a cushion's track, else the selected */
+    uint32_t tk = icon - ICON_TRK < NTRK ? icon - ICON_TRK :
+#if FELUCCA_CAFA
+        cafa_native_profile_view ? cafa_native_u14(cafa_native_profile_view + 13) % UI_NTRK :
+#endif
+        song.sel;   /* whose card: a cushion's track, else the selected */
     int32_t room = COL_W - BK_L - BK_R;
     cv_begin(COL_W, COL_H, T_BG);
     if (ux.neon && hot) {                             /* (Skiff N3) NEON: the hot card a dusk, framed; the others */
@@ -363,6 +414,9 @@ static void confirm_text(char *a, char *b);            /* (ui_draw.c) */
 static void draw_frame(void);
 static void draw_columns(void);
 static void draw_foot(void);
+#if FELUCCA_CAFA
+static uint8_t cafa_native_confirm_backdrop=1;
+#endif
 /* the page under the dialog, as the B mockup's: drawn again with every colour 70 % of the way to BG (the header stays
  * itself: REC shows over a dialog); the lint takes it as a fill, a backdrop never read */
 static void confirm_backdrop(void)
@@ -378,9 +432,16 @@ static void confirm_backdrop(void)
     ux.gen++;                                         /* (the text ramps: the dimmed ones) */
     cv_vhs = ux.neon;                                 /* ((Skiff N3) NEON: paused, as a tape) */
     draw_frame();
-    draw_columns();
-    draw_graph();
-    draw_foot();
+#if FELUCCA_CAFA
+    if (cafa_native_profile_view) {
+        /* A modal publication has no implicit local or previous-project backdrop. */
+        cafa_native_profile_columns();
+        lcd_fill(0, Y_GRAPH, 240, 240 - Y_GRAPH, T_BG);
+    } else
+#endif
+    {
+        draw_columns(); draw_graph(); draw_foot();
+    }
     cv_vhs = 0;
     ux = keep;
     GFX_HOOK_BACKDROP(0, H_HEAD, 240, 240 - H_HEAD);
@@ -404,6 +465,17 @@ static void draw_confirm_blocks(void)
     const char *hint = k == CF_CLEAR_TRKS ? "the sounds stay" : undoable ? "hold SAVE: undo" : "can't be undone";   /* ((Skiff
                                                        * U4) the undo hint's words, in
                                                        * the explanations' sentence case) */
+#if FELUCCA_CAFA
+    char remote_hint[25], remote_cancel[25], remote_verb[25];
+    int remote = cafa_native_profile_view && cafa_native_profile_view[6] == 63u;
+    if (remote) {
+        cafa_nv_line(a, sizeof a, 0); cafa_nv_line(b, sizeof b, 1);
+        cafa_nv_line(remote_hint, sizeof remote_hint, 2);
+        cafa_nv_line(remote_cancel, sizeof remote_cancel, 3);
+        cafa_nv_line(remote_verb, sizeof remote_verb, 4);
+        hint = remote_hint; undoable = 0; k = CF_NONE;
+    } else
+#endif
     confirm_text(a, b);
     if (k == CF_CLEAR_SEQ && !b[0]) {                 /* what goes: the steps, the notes among them */
         const track_t *t = &trk[ui.confirm_trk % NTRK];
@@ -414,7 +486,10 @@ static void draw_confirm_blocks(void)
         say_count(b, sizeof b, n, " NOTE");
         lower_words(b);                               /* ("16 steps, 9 notes"; a name keeps its capitals) */
     }
-    confirm_backdrop();
+#if FELUCCA_CAFA
+    if(!cafa_native_profile_view || cafa_native_confirm_backdrop)
+#endif
+        confirm_backdrop();
     ui.head_sig = ~0u;
     cv_begin(BD_W, BD_H, T_SURF);
     if (ux.crypt) {                                   /* (Skiff C3) CRYPT: a stone tablet in a double frame */
@@ -462,7 +537,11 @@ static void draw_confirm_blocks(void)
     }
     for (i = 0; i < 2u; i++) {                        /* CANCEL (OCT-), the action (OCT+) */
         int32_t x = i ? BD_W - 12 - BD_BW : 12;
-        const char *w = i ? VERB[k < CF_COUNT && VERB[k] ? k : CF_CLEAR_SEQ] : "CANCEL";
+        const char *w =
+#if FELUCCA_CAFA
+            remote ? (i ? remote_verb : remote_cancel) :
+#endif
+            i ? VERB[k < CF_COUNT && VERB[k] ? k : CF_CLEAR_SEQ] : "CANCEL";
         const aafont_t *wf = text_w(&AF_M, w) <= BD_BW - 8 ? &AF_M : &AF_S;
         if (i)
             cv_frame(x, BD_BY, BD_BW, BD_BH, T_REC);

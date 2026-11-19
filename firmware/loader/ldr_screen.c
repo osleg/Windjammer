@@ -1,16 +1,17 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Skiff: the update loader's screen (loader.c; tests/ldr_screen_test.c). A unit whose install was cut off comes back
+/* The update loader's screen (loader.c; tests/ldr_screen_test.c). A unit whose install was cut off comes back
  * to the loader at every power-on, and showed a black screen while M-Upgrade can't see "Felucca Update": UPDATE MODE
  * and what it waits for, then WRITING and a bar while the app area is written. Drawn with the loader's own 5 x 7
  * letters (the app area may be half written: never read), before USB starts (USB is polled: the panel's ~0.3 s init
  * would leave the host's enumeration unanswered) */
-static const char LDR_CH[] = "ABCDEFGHIKLMNOPRSTUW";            /* the letters the screens use; others: a space */
+static const char LDR_CH[] = "ABCDEFGHIJKLMNOPRSTUW";            /* the letters the screens use; others: a space */
 static const uint8_t LDR_FONT[sizeof LDR_CH - 1u][7] = {         /* rows, bit 4 the left dot */
     {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E},   /* A B */
     {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E},   /* C D */
     {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10},   /* E F */
     {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F}, {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},   /* G H */
-    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11},   /* I K */
+    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, {0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C},   /* I J */
+    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11},   /* K */
     {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11},   /* L M */
     {0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11}, {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},   /* N O */
     {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}, {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11},   /* P R */
@@ -62,7 +63,7 @@ static void ldr_screen(void)
 {
     lcd_init();                                     /* (the panel cleared, on) */
     ldr_text(70, 3, LDR_TITLE, "UPDATE MODE");
-    ldr_lines("WAITING FOR THE", "SKIFF INSTALLER", "KEEP USB CONNECTED");   /* (an install on its way, or one cut
+    ldr_lines("WAITING FOR THE", "WINDJAMMER INSTALLER", "KEEP USB CONNECTED");   /* (an install on its way, or one cut
                                                                               * off: words for both, no alarm) */
     lcd_sync();
 }
@@ -85,7 +86,7 @@ static void ldr_bar(uint32_t done, uint32_t total)
 }
 static void ldr_failed(void)                        /* a session that wrote nothing or stopped: the way out */
 {
-    ldr_lines("UPDATE FAILED", "INSTALL AGAIN WITH", "THE SKIFF INSTALLER");
+    ldr_lines("UPDATE FAILED", "INSTALL AGAIN WITH", "WINDJAMMER INSTALLER");
     lcd_fill(LDR_BAR_X, LDR_BAR_Y, LDR_BAR_W, 8, 0);
     lcd_sync();
     ldr_writing = 0;

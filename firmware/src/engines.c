@@ -5,6 +5,13 @@
 /* Skiff: the parts' shared engine memory (eng_mem, after the engines): each engine's per-part state lives in its
  * part's area, never in arrays of its own for all the parts */
 static void *eng_part(const track_t *t);
+/* The controller keeps engine metadata for exact Skiff widgets, but no local
+ * note or audio callbacks may keep DSP in its linked image. */
+#if FELUCCA_CONTROLLER
+#define ENG_AUDIO_CALLBACK(fn) 0
+#else
+#define ENG_AUDIO_CALLBACK(fn) fn
+#endif
 #include "dsp.c"
 #include "eng_analog.c"
 #include "eng_phase.c"

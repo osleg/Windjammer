@@ -233,10 +233,10 @@ static const engine_t ENG_LOFI = {
     },
     .presets = LOFI_PRESETS,
     .npresets = NELEM(LOFI_PRESETS),
-    .note_on = lofi_note_on,
-    .render = lofi_render,
+    .note_on = ENG_AUDIO_CALLBACK(lofi_note_on),
+    .render = ENG_AUDIO_CALLBACK(lofi_render),
     .knob = {P_E1, P_E2, P_E3, P_REL},
     .keep = 0x11,                /* the held sample and the low-pass */
-    .amp = lofi_amp,
+    .amp = ENG_AUDIO_CALLBACK(lofi_amp),
     .desc = lofi_desc,
 };

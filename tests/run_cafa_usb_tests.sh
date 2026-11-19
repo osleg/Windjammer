@@ -29,3 +29,5 @@ for uac in 0 1; do
     done
 done
 printf '%s\n' 'Stock USB descriptor matrix passed (64 variants)'
+"$CC" -std=c99 -O2 tests/direct_usb_test.c -o "$OUT/direct"
+"$OUT/direct"

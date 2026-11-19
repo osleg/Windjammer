@@ -1,5 +1,19 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#if FELUCCA_CAFA
+static void graph_dx(const track_t *t,uint16_t c);
+static void graph_fm_op(const track_t *t,uint16_t c);
+static void graph_fm_all(const track_t *t,uint16_t c);
+static void cafa_nv_notes(uint16_t c);
+static void cafa_native_transient_draw(void);
+enum { CAFA_TRACK_LANES = 6u, CAFA_PATTERN_CELLS = 64u };
+static uint32_t cafa_nv_track_lanes(void)
+{
+    const uint8_t *rows = cafa_nv_section(CAFA_NATIVE_ROWS, 0);
+    uint32_t count = rows ? rows[0] : 0u;
+    return count < CAFA_TRACK_LANES ? count : CAFA_TRACK_LANES;
+}
+#endif
 /* Felucca UI: the panel (Y_GRAPH .. Y_GRAPH + H_GRAPH) between the cards and the footer: a SURF area
  * (rounded, on BG) holding the page graphs (ADSR, LFO, steps, piano roll, drum grid, scale, FX, SLICER,
  * MOD, lists: presets, user presets, patterns, project slots, song), the HOME oscilloscope, the
@@ -59,23 +73,7 @@ static void env_fill4(int32_t at, int32_t de, int32_t su, int32_t re, int16_t *l
 
 /* (Skiff C4) CRYPT's ENV: the envelope as ASCII art (36 columns of 6 px) over its ':' shade, its three points skulls
  * (the knob just turned's the flame's colour) */
-static void cr_adsr(const track_t *t)
-{
-    int16_t *const lv = eg_lv;
-    const page_t *pg = cur_page();
-    uint8_t L[37];
-    int32_t rows = (graph_ht - 6) / 9, i, pt[3], hc = ui.hot_t ? (int32_t)ui.hot_col : -1;
-    env_fill4(t->p[pg->id[0]], t->p[pg->id[1]], t->p[pg->id[2]], t->p[pg->id[3]], lv, 216, &pt[0], &pt[1], &pt[2]);
-    for (i = 0; i < 37; i++)
-        L[i] = (uint8_t)(rows - (lv[i * 6] * rows + 500) / 1000);
-    cr_dots(12, 3, 6, 9, L, 37, rows, T_DIM);
-    cr_art(12, 3, 6, 9, L, 37, T_THEME);
-    for (i = 0; i < 3; i++) {
-        int32_t c = (pt[i] + 3) / 6;
-        int hot = hc == i || (i > 0 && hc == i + 1);      /* (as graph_adsr: DECAY, SUSTAIN light the decay's end ..) */
-        cr_skull(12 + c * 6 - 4, 3 + L[c > 36 ? 36 : c] * 9 - 4, hot ? CR_FLAME : T_TEXT, T_SURF, 0);
-    }
-}
+
 
 /* (Skiff) the LFO over time, as it runs (the graphs of LFO, LFO DEST): LFO_WIN of control ticks (2 s) from its retrigger
  * (a phrase's first note, voice.c: FADE rising from nothing), RATE's cycles in it (or (#16) SYNC's); past it, the last
@@ -84,190 +82,19 @@ static void cr_adsr(const track_t *t)
  * side); lfo_view_now: where the LFO is now (px) */
 #define LFO_WIN (FS / CTL * 2u)
 static uint32_t lfo_view_t0(const track_t *t) { return t->lfo_t > LFO_WIN ? t->lfo_t - LFO_WIN : 0u; }
-static int32_t lfo_view_at(const track_t *t, int32_t x, int32_t w)
-{
-    uint32_t k = lfo_view_t0(t) + (uint32_t)x * LFO_WIN / (uint32_t)w, ft, inc = lfo_inc(t);   /* (32-bit: no 64-bit
-                                                         * division here) */
-    uint64_t ph = (uint64_t)(t->p[P_LTRIG] ? t->lfo_ph - t->lfo_t * inc : (uint32_t)t->p[P_LPHASE] << 25) +
-                  (uint64_t)k * inc;                   /* (from its phase at the retrigger: PHASE's (TRIG NOTE: turning
-                                                         * PHASE shows at once), or (#16) FREE's, back from where it
-                                                         * runs now; RND's cycles counted from there) */
-    int32_t v = t->p[P_LWAVE] == 4 ? (int32_t)(((uint32_t)(ph >> 32) * 2654435761u) >> 16) - 32768 :
-                lfo_wave((track_t *)t, (uint32_t)ph);
-    if (t->p[P_LPOL])
-        v = (v + 32768) >> 1;
-    ft = t->p[P_LFADE] ? TIME_MS_X10[t->p[P_LFADE] & 127] * (FS / CTL) / 10000u : 0u;   /* FADE, ticks */
-    return ft && k < ft ? v * (int32_t)((k << 14) / ft) >> 14 : v;   /* (FADE is under 2^18 ticks) */
-}
-static int32_t lfo_view_now(const track_t *t, int32_t w)
-{
-    return (int32_t)((t->lfo_t - lfo_view_t0(t)) * (uint32_t)w / LFO_WIN);
-}
+
+
 
 /* (Skiff C4) CRYPT's LFO: its 2 s as ASCII art, faint, and as a snake up to where the LFO is now, its head there (past
  * 2 s the path scrolls under it) */
-static void cr_lfo(const track_t *t)
-{
-    uint8_t L[37];
-    int32_t rows = (graph_ht - 8) / 10, i, now = lfo_view_now(t, 210) / 6;
-    if (rows > 10)
-        rows = 10;
-    for (i = 0; i < 37; i++)
-        L[i] = (uint8_t)(rows / 2 - lfo_view_at(t, i * 6, 216) * (rows / 2) / 32768);
-    cr_art(12, 4, 6, 10, L, 37, T_LINE);
-    cr_snake(12, 4, 6, 10, L, (uint32_t)now + 1u, T_THEME, CR_EMBER);   /* (its head at most at column 35: in the frame) */
-}
+
 
 /* Matches voice.c: attack is linear, decay and release are exponential
  * (env += (target - env) * k each tick, ~99 % after the set time). Time
  * axis is the parameter value (the times themselves are exponential). */
-static void graph_adsr(const track_t *t, uint16_t c)
-{
-    const page_t *pg = cur_page();
-    int32_t a = 4 + t->p[pg->id[0]] * 50 / 127, d = 6 + t->p[pg->id[1]] * 50 / 127, r = 6 + t->p[pg->id[3]] * 60 / 127;
-    int32_t top = 6 * graph_ht / 100, bot = 88 * graph_ht / 100, sus = t->p[pg->id[2]] * 1000 / 127;   /* 0..1000 */
-    int32_t x0 = 12, x1 = x0 + a, x3 = 226 - r, i, px, py;
-    int32_t e = 32768;                                                  /* exp(-4.6 u), Q15 */
-    if (ux.crypt) {                                  /* (Skiff C4) CRYPT: its own */
-        cr_adsr(t);
-        return;
-    }
-#define EGY(lvl) (bot - (lvl) * (bot - top) / 1000)
-    if (ux.neon || ux.quark) {                       /* (Skiff N4) NEON: the sun's bands under the curve; (Q4) QUARK: a
-                                                      * Monte Carlo fill */
-        int32_t xa, xd, xr;
-        env_fill4(t->p[pg->id[0]], t->p[pg->id[1]], t->p[pg->id[2]], t->p[pg->id[3]], eg_lv, 214, &xa, &xd, &xr);
-        for (i = 0; i <= 214; i++)
-            eg_lv[i] = (int16_t)EGY(eg_lv[i]);     /* (the rows) */
-        if (ux.neon)
-            ne_bands(x0, eg_lv, 215, top, bot);
-        else
-            for (i = 0; i <= 214; i++)
-                qk_mc(x0 + i, eg_lv[i], bot);
-    }
-    cv_rect(PANEL_X0, top, PANEL_W, 1, T_LINE);      /* (Skiff) as the B mockup: three guides, its top, middle, foot */
-    cv_rect(PANEL_X0, (top + bot) / 2, PANEL_W, 1, T_LINE);
-    cv_rect(PANEL_X0, bot, PANEL_W, 1, T_LINE);
-    cv_line_t(x0, bot, x1, top, c, 2);                                  /* attack: linear */
-    px = x1;
-    py = top;
-    for (i = 1; i <= d; i++) {                                          /* decay: exponential to SUS */
-        int32_t lvl;
-        e = (e * (32768 - 150733 / d)) >> 15;           /* k^d = exp(-4.6) */
-        lvl = sus + ((1000 - sus) * e >> 15);
-        cv_line_t(px, py, x1 + i, EGY(lvl), c, 2);
-        px = x1 + i;
-        py = EGY(lvl);
-    }
-    cv_line_t(px, py, x3, EGY(sus), c, 2);                               /* sustain */
-    px = x3;
-    py = EGY(sus);
-    e = 32768;
-    for (i = 1; i <= r; i++) {                                          /* release: exponential to 0 */
-        e = (e * (32768 - 150733 / r)) >> 15;
-        cv_line_t(px, py, x3 + i, EGY(sus * e >> 15), c, 2);
-        px = x3 + i;
-        py = EGY(sus * e >> 15);
-    }
-    {                                                /* (Skiff) and its points as 5 px blocks, as the mockup's: the
-                                                      * peak (ATK), the decay's end (DEC), the release's start (REL),
-                                                      * SUS both of the last two; the knob just turned's white */
-        int32_t hc = ui.hot_t ? (int32_t)ui.hot_col : -1, hx[3] = {x1, x1 + d, x3}, hy[3] = {top, EGY(sus), EGY(sus)};
-        for (i = 0; i < 3; i++) {                    /* (the peak lit by ATK; the decay's end by DEC, SUS; the release's
-                                                      * start by SUS, REL) */
-            int hot = hc == i || (i && hc == i + 1);
-            if (ux.quark)                            /* ((Skiff Q4) QUARK: nuclei, the knob just turned's gold) */
-                qk_nucleus(hx[i], hy[i], hot ? T_ACCENT : T_THEME, hot ? 9 : 7);
-            else if (ux.neon)                        /* ((Skiff N4) NEON: sparkles, the knob just turned's big) */
-                ne_spark(hx[i], hy[i], hot ? T_THEME : T_ACCENT, hot ? 2 : 1);
-            else
-                cv_rect(hx[i] - 2, hy[i] - 2, 5, 5, hot ? T_ACCENT : c);
-        }
-        if (ux.quark) {                              /* ((Skiff Q4) QUARK: DECAY's and RELEASE's half-lives over the
-                                                      * sustain (under it near the top) */
-            char hb[16];
-            int32_t ly = EGY(sus) - 14 < 2 ? EGY(sus) + 6 : EGY(sus) - 14, lx = x1 + d + 10, rx;
-            if (pg->id[1] == P_DEC) {                /* (the ENV page's own envelope: its times' table) */
-                qk_halflife(hb, t->p[P_DEC]);
-                if (lx + text_w(&AF_S, hb) <= 230)   /* (in the panel, or none) */
-                    lx = cv_text(lx, ly, &AF_S, hb, hc == 1 ? T_ACCENT : T_MID) + 6;
-                else
-                    lx = 240;
-                qk_halflife(hb, t->p[P_REL]);
-                rx = x3 - 8 - text_w(&AF_S, hb);
-                if (rx >= lx && rx > x1 + d)
-                    cv_text(rx, ly, &AF_S, hb, hc == 3 ? T_ACCENT : T_MID);
-            }
-        }
-    }
-#undef EGY
-}
 
-static void graph_lfo(const track_t *t, uint16_t c)
-{
-    int32_t x, cy = graph_ht / 2, a = 38 * graph_ht / 100, py = cy;
-    if (ux.crypt) {                                  /* (Skiff C4) CRYPT: the snake */
-        cr_lfo(t);
-        return;
-    }
-    int32_t now = lfo_view_now(t, PANEL_W - 1);
-    if (ux.quark) {                                  /* (Skiff Q4) QUARK: the orbit and its projection: the electron's
-                                                      * height drawn out as the wave (its 2 s, lfo_view_at), the electron
-                                                      * where the LFO is now, a dashed line to it on the wave */
-        int32_t ox = 46, r = 34 * graph_ht / 100, x0 = 92, w = PANEL_X0 + PANEL_W - x0, nx = lfo_view_now(t, w - 1);
-        int32_t ey = cy - lfo_view_at(t, nx, w) * r / 32768, dy = ey - cy, k = r, i;
-        while (k > 0 && k * k > r * r - dy * dy)
-            k--;
-        qk_ellipse(ox, cy, r, r * 34 / 100, 0x15555555u, T_LINE, 32);
-        qk_ellipse(ox, cy, r, r * 34 / 100, 0xEAAAAAABu, T_LINE, 32);
-        qk_ellipse(ox, cy, r, r, 0, c, 48);
-        cv_rect(ox - 2, cy - 2, 2, 2, T_TRK(0));
-        cv_rect(ox + 1, cy - 2, 2, 2, T_TRK(1));
-        cv_rect(ox - 1, cy + 1, 2, 2, T_TRK(2));
-        cv_rect(x0, 4, 1, graph_ht - 8, T_LINE);
-        cv_rect(x0, cy, w, 1, T_LINE);
-        for (x = 0; x < w; x++) {
-            int32_t y = cy - lfo_view_at(t, x, w) * r / 32768;
-            if (x)
-                cv_line_t(x0 + x - 1, py, x0 + x, y, c, 2);
-            py = y;
-        }
-        for (i = ox + k + 4; i < x0 + nx - 3; i += 3)
-            cv_rect(i, ey, 1, 1, T_ACCENT);
-        qk_disc(ox + k, ey, 3, T_ACCENT);
-        qk_disc(x0 + nx, ey, 2, T_ACCENT);
-        return;
-    }
-    if (ux.neon) {                                   /* ((Skiff N4) NEON: the wave up in the panel, a floor under it) */
-        cy = 40 * graph_ht / 100;
-        a = 30 * graph_ht / 100;
-    }
-    cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
-    if (ux.neon) {                                   /* (Skiff N4) NEON: the wave a ridge of vector mountains on a grid */
-        int32_t hy = cy + a + 6;                     /* floor (design/mock_neon.py a_lfo) */
-        for (x = 0; x < PANEL_W; x += 4) {
-            int32_t y = cy - lfo_view_at(t, x, PANEL_W) * a / 32768 + 4;
-            if (y < hy)
-                cv_rect(PANEL_X0 + x, y, 1, hy - y, ux_mix(NE_VIOLET, T_SURF, 55));
-        }
-        if (graph_ht - 1 - hy >= 8)
-            ne_grid(PANEL_X0, PANEL_X0 + PANEL_W, hy, graph_ht - 1, NE_VIOLET, T_SURF);
-    }
-    for (x = 0; x < PANEL_W; x++) {                  /* (Skiff) its 2 s as it runs (lfo_view_at): RATE, PHASE, FADE */
-        int32_t y = cy - lfo_view_at(t, x, PANEL_W) * a / 32768;
-        if (x)
-            cv_line_t(PANEL_X0 + x - 1, py, PANEL_X0 + x, y, ux.neon && x > now ? ux_mix(c, T_SURF, 55) : c, 2);
-        py = y;
-    }
-    x = now;                                         /* .. and where it is now */
-    if (ux.neon) {                                   /* (NEON: a white-hot light trail into it, a sparkle) */
-        int32_t i;
-        for (i = 0; i < 36 && x - i > 0; i++)
-            cv_rect(PANEL_X0 + x - i, cy - lfo_view_at(t, x - i, PANEL_W) * a / 32768, 1, 2, ux_mix(T_TEXT, c, i * 100 / 36));
-        ne_spark(PANEL_X0 + x, cy - lfo_view_at(t, x, PANEL_W) * a / 32768 + 1, T_ACCENT, 2);
-    } else
-    cv_rect(PANEL_X0 + x - 2, cy - lfo_view_at(t, x, PANEL_W) * a / 32768 - 2, 5, 5, T_TEXT);
-}
+
+
 
 /* step bar x of step i of a 16-step row: 4 groups, as the footer (9 px bars, 13 px apart, 4 px between groups),
  * the row centred: x 12 .. 228 */
@@ -311,36 +138,65 @@ static void pr_card(int32_t xr, int32_t y, const char *job, const char *val, int
 }
 static void graph_steps(const track_t *t, uint16_t c)
 {
-    uint32_t i, len = (uint32_t)t->p[P_SLEN], cur = fr.on ? NSTEP : ui.cursor;
-    int32_t sm = graph_ht < 100;                     /* MENU > LARGE's strip: rows 14 px apart, bars 10 px */
+    uint32_t i,len,cur,play;
+    int32_t sm = graph_ht < 100;
+    int remote=0;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)remote=1;
+#endif
+    len=remote?0u:(uint32_t)t->p[P_SLEN];
+    cur=remote || fr.on ? UINT32_MAX : ui.cursor;
+    play=remote ? UINT32_MAX : t->seq_idx;
+#if FELUCCA_CAFA
+    if(remote) {
+        uint32_t first=cafa_native_u14(cafa_native_profile_view+17);
+        const uint8_t *cells=cafa_nv_section(CAFA_NATIVE_CELLS,0);
+        len=cells?cafa_native_u14(cells):0u;
+        if(len>CAFA_PATTERN_CELLS)len=CAFA_PATTERN_CELLS;
+        sm=graph_h()<100u;
+        if(cafa_native_profile_view[6]!=CAFA_SCREEN_TAKE_PICKER) {
+            uint32_t abs=cafa_native_u14(cafa_native_profile_view+20);
+            if(abs!=16383u && abs>=first && abs-first<len)cur=abs-first;
+        }
+        {uint32_t abs=cafa_native_u14(cafa_native_profile_view+22);
+         if(abs!=16383u && abs>=first && abs-first<len)play=abs-first;}
+    }
+#endif
     int32_t bh = sm ? 10 : 14, pitch = sm ? 14 : 24, y0 = sm ? 2 : 4;
-    for (i = 0; i < NSTEP; i++) {
+    for (i = 0; i < len && (remote || i < NSTEP); i++) {
         int32_t x = bar_x(i), y = y0 + (int32_t)(i / 16u) * pitch;
-        const step_t *st = &t->step[i];
-        if (i >= len)
-            continue;
+        const step_t *st=remote?0:&t->step[i];
+        uint32_t on,tie,accent;
+#if FELUCCA_CAFA
+        if(remote) {
+            const uint8_t *cell=cafa_nv_cell(i);
+            uint32_t flags=cell?cell[2]:0u;
+            on=flags&1u;tie=flags&8u;accent=flags&32u;
+        } else
+#endif
+        {on=step_on(st);tie=step_tie(st);accent=(st->flags&SF_ACCENT)!=0u;}
         if (i % 16u == 0u && i + 16u <= len)
             GFX_HOOK_ALIGN(0, 0, 240, 0, AL_H | AL_CELLS | AL_N(16), "step bars' row centred");
         if (ux.crypt) {                              /* (Skiff S1) CRYPT: ASCII, # a note, - a tie, . nothing */
             int32_t base = y + bh / 2 + 4;
-            if (step_on(st))
-                cr_ch(x + 2, base, &AF_S, '#', (st->flags & SF_ACCENT) ? T_ACCENT : c);
-            else if (step_tie(st))
+            if (on)
+                cr_ch(x + 2, base, &AF_S, '#', accent ? T_ACCENT : c);
+            else if (tie)
                 cr_ch(x + 3, base, &AF_S, '-', T_MID);
             else
                 cr_ch(x + 4, base, &AF_S, '.', T_DIM);
         } else if (ux.quark) {                       /* (Skiff Q4) QUARK: a bunch, a tie its trail, nothing a dot */
-            if (step_on(st))
-                qk_disc(x + 4, y + bh / 2, bh > 10 ? 4 : 3, (st->flags & SF_ACCENT) ? T_ACCENT : c);
-            else if (step_tie(st))
+            if (on)
+                qk_disc(x + 4, y + bh / 2, bh > 10 ? 4 : 3, accent ? T_ACCENT : c);
+            else if (tie)
                 cv_rect(x, y + bh / 2, 9, 1, T_MID);
             else
                 cv_rect(x + 4, y + bh / 2, 1, 1, T_DIM);
-        } else if (ux.neon && step_on(st))           /* (Skiff S1) NEON: a lit tube */
-            ne_tube(x, y, 9, bh, (st->flags & SF_ACCENT) ? T_ACCENT : c, T_SURF);
-        else if (step_on(st))
-            cv_rrect(x, y, 9, bh, 2, (st->flags & SF_ACCENT) ? T_ACCENT : c, T_SURF);
-        else if (step_tie(st))
+        } else if (ux.neon && on)           /* (Skiff S1) NEON: a lit tube */
+            ne_tube(x, y, 9, bh, accent ? T_ACCENT : c, T_SURF);
+        else if (on)
+            cv_rrect(x, y, 9, bh, 2, accent ? T_ACCENT : c, T_SURF);
+        else if (tie)
             cv_rrect(x, y + bh - 6, 9, 6, 1, T_MID, T_SURF);
         else
             cv_rrect(x, y + bh - 3, 9, 3, 1, T_RAISE, T_SURF);
@@ -348,10 +204,10 @@ static void graph_steps(const track_t *t, uint16_t c)
             cv_rect(x - 1, y + bh + 1 - sm, 11, 4, ux_mix(T_ACCENT, T_SURF, 60));
         if (i == cur)
             cv_rect(x, y + bh + 2 - sm, 9, 2, T_ACCENT);
-        else if (song.playing && i == t->seq_idx)
+        else if ((remote || song.playing) && i == play)
             cv_rect(x, y + bh + 2 - sm, 9, 2, ux.crypt ? CR_GOLD : T_TEXT);
     }
-    if (!sm && !fr.on) {                             /* ((Skiff 2.0) the track's DIR, PRESETS': (2.5, 5B) its card, under
+    if (!sm && !remote && !fr.on) {                             /* ((Skiff 2.0) the track's DIR, PRESETS': (2.5, 5B) its card, under
                                                       * the rows, right (a short pattern: where the rows' fourth is) */
         int32_t y = y0 + (int32_t)((len + 15u) / 16u) * pitch - (pitch - bh) + 5, bot = (int32_t)graph_h() - cv_oy - 2;
         uint32_t d = (uint32_t)t->p[P_DIR] % NELEM(N_DIR);   /* (bot: the panel's foot, on this scale) */
@@ -362,6 +218,17 @@ static void graph_steps(const track_t *t, uint16_t c)
             y = bot - (lo ? PR_LINE_H : PR_CARD_H);
         pr_card(228, y, "DIR", N_DIR[d], (int32_t)d, (int32_t)NELEM(N_DIR), c, lo);
     }
+#if FELUCCA_CAFA
+    else if(!sm && remote && cafa_native_profile_view[6]!=CAFA_SCREEN_TAKE_PICKER) {
+        const uint8_t *r=cafa_nv_row(0);char label[17],value[17];
+        if(r) {
+            int32_t y=66,bot=(int32_t)graph_h()-cv_oy-2,lo=y+PR_CARD_H>bot;
+            cafa_native_text(label,r,16);cafa_native_text(value,r+16,16);
+            if(y>bot-(lo?PR_LINE_H:PR_CARD_H))y=bot-(lo?PR_LINE_H:PR_CARD_H);
+            pr_card(228,y,label,value,(int32_t)cafa_native_u14(r+41)*1000/16383,1001,c,lo);
+        }
+    }
+#endif
 }
 
 /* STEP page (a melodic track): a piano roll of the cursor's 16-step page. PR_ROWS semitone rows of PR_RH px,
@@ -480,10 +347,26 @@ static void pr_split(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c, uin
 }
 /* the bars of step s in column x (in its RATCH parts, hits; a TIE's carried bars: 1): a 1 px edge mark for a note
  * out of view; first: row y of the step's first note */
+static void pr_bar(int32_t x,int32_t y,int32_t w,uint16_t c,int acc,uint32_t hits)
+{
+    int32_t ybot=PR_Y0+PR_ROWS*PR_RH;
+    if(y<PR_Y0)pr_split(x,PR_Y0,w,1,c,hits);
+    else if(y>=ybot)pr_split(x,ybot-1,w,1,c,hits);
+    else if(ux.quark && hits==1u) {
+        int32_t k2;uint16_t cc=acc && c!=T_ACCENT?T_TEXT:c;
+        qk_disc(x+1,y+2,1,cc);
+        for(k2=x+4;k2<x+w;k2+=2)
+            cv_rect(k2,y+2,1,1,ux_mix(cc,T_SURF,50*(k2-x)/(w>1?w:1)));
+    } else if(ux.crypt && hits==1u)
+        cr_blade(x,y+1,w,PR_RH-2,acc && c!=T_ACCENT?T_TEXT:c);
+    else if(ux.neon && hits==1u)
+        ne_tube(x,y+1,w,PR_RH-2,acc && c!=T_ACCENT?T_TEXT:c,T_SURF);
+    else if(acc)pr_split(x,y,w,PR_RH,c==T_ACCENT?c:T_TEXT,hits);
+    else pr_split(x,y+1,w,PR_RH-2,c,hits);
+}
 static void pr_bars(const step_t *st, int32_t x, int32_t w, uint16_t c, int acc_all, int32_t *first, uint32_t hits)
 {
     uint32_t j;
-    int32_t ybot = PR_Y0 + PR_ROWS * PR_RH;
     for (j = 0; j < 4u + NLANE; j++) {
         int32_t n = pr_note(st, j), y;
         int acc;
@@ -493,24 +376,7 @@ static void pr_bars(const step_t *st, int32_t x, int32_t w, uint16_t c, int acc_
         y = pr_row_y(n);
         if (*first < -1000)
             *first = y;
-        if (y < PR_Y0)
-            pr_split(x, PR_Y0, w, 1, c, hits);
-        else if (y >= ybot)
-            pr_split(x, ybot - 1, w, 1, c, hits);
-        else if (ux.quark && hits == 1u) {           /* ((Skiff Q4) QUARK: a bubble track from its vertex, thinning) */
-            int32_t k2;
-            uint16_t cc = acc && c != T_ACCENT ? T_TEXT : c;
-            qk_disc(x + 1, y + 2, 1, cc);
-            for (k2 = x + 4; k2 < x + w; k2 += 2)
-                cv_rect(k2, y + 2, 1, 1, ux_mix(cc, T_SURF, 50 * (k2 - x) / (w > 1 ? w : 1)));
-        } else if (ux.crypt && hits == 1u)           /* ((Skiff S1) CRYPT: a sword; accented: bone) */
-            cr_blade(x, y + 1, w, PR_RH - 2, acc && c != T_ACCENT ? T_TEXT : c);
-        else if (ux.neon && hits == 1u)              /* ((Skiff N5) NEON: a lit tube; accented: white-hot) */
-            ne_tube(x, y + 1, w, PR_RH - 2, acc && c != T_ACCENT ? T_TEXT : c, T_SURF);
-        else if (acc)
-            pr_split(x, y, w, PR_RH, c == T_ACCENT ? c : T_TEXT, hits);
-        else
-            pr_split(x, y + 1, w, PR_RH - 2, c, hits);
+        pr_bar(x,y,w,c,acc,hits);
     }
 }
 /* (Skiff 2.0) SEQ > FEEL (STEP's tiles before, the B mockup's): the 16 steps of the cursor's bar as tiles, two rows of
@@ -526,18 +392,39 @@ static void pr_bars(const step_t *st, int32_t x, int32_t w, uint16_t c, int acc_
 #define TL_NY 15                                      /* a note's name: its capitals rows 18 .. 27 of the tile */
 static void graph_tiles(const track_t *t, uint16_t c)
 {
-    uint32_t i, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u;
-    uint64_t locks = motion_lock_steps(trk_index(t));
+    int remote=0;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)remote=1;
+#endif
+    uint32_t i,len=remote?0u:(uint32_t)t->p[P_SLEN],base=remote?0u:ui.bank*16u;
+    uint64_t locks=remote?0u:motion_lock_steps(trk_index(t));
+#if FELUCCA_CAFA
+    if(remote) {
+        uint32_t bytes;const uint8_t *cells=cafa_nv_section(CAFA_NATIVE_CELLS,&bytes);
+        len=cells?cafa_native_u14(cells):0u;
+        base=cafa_native_u14(cafa_native_profile_view+17);
+    }
+#endif
     int32_t top = ((int32_t)cv_h - (TL_P + TL_H + 3 + AF_S_CAP_H)) / 2;
     uint16_t empty = T_SURF, g = T_BG;
     cv_rect(0, 0, 240, (int32_t)cv_h, T_BG);
     cv_bg = T_BG;
-    for (i = 0; i < 16u && base + i < len; i++) {
-        uint32_t si = base + i, cur = si == ui.cursor && !nsel.a1;
-        const step_t *st = &t->step[si];
+    for (i = 0; i < 16u && (remote?i<len:base+i<len); i++) {
+        uint32_t si=base+i,cur=0u;const step_t *st=remote?0:&t->step[si];
+        uint32_t flags=0u,played=0u,prob=0u;
+#if FELUCCA_CAFA
+        if(remote) {
+            const uint8_t *cell=cafa_nv_cell(i);
+            flags=cell?cell[2]:0u;
+            cur=(si==cafa_native_u14(cafa_native_profile_view+20)) || (flags&2u);
+            played=(si==cafa_native_u14(cafa_native_profile_view+22)) || (flags&4u);
+            prob=flags&32u;
+        } else
+#endif
+        {cur=si==ui.cursor && !nsel.a1;played=song.playing && si==t->seq_idx;}
         int32_t x = 4 + 29 * (int32_t)(i % 8u), y = top + TL_P * (int32_t)(i / 8u);
-        int on = step_starts(st) && st->n, tie = step_tie(st);
-        uint16_t fill = cur ? T_TEXT : on ? (st->time == ST_REST ? ux_mix(c, empty, 70) : c) : tie ? ux_mix(c, empty, 50) :
+        int on=remote?(flags&1u):step_starts(st)&&st->n,tie=remote?(flags&8u):step_tie(st);
+        uint16_t fill = cur ? T_TEXT : on ? (!remote && st->time == ST_REST ? ux_mix(c, empty, 70) : c) : tie ? ux_mix(c, empty, 50) :
                         empty;
         char nb[8];
         if (ux.neon && (on || cur))                   /* ((Skiff N5) NEON: a note a lit tube, the edited one white) */
@@ -548,19 +435,27 @@ static void graph_tiles(const track_t *t, uint16_t c)
                                                        * one's gold) */
             cv_frame(x + 2, y + 2, TL_W - 4, TL_H - 4, cur ? CR_GOLD : ux_mix(fill, T_INK, 45));
         if (on) {
+#if FELUCCA_CAFA
+            if(remote){const uint8_t *cell=cafa_nv_cell(i);cafa_native_text(nb,cell+3,4);}
+            else
+#endif
             (void)feel_text(nb, st, nsel.view);
             GFX_HOOK_ALIGN(x, 0, x + TL_W, 0, AL_H, "step tile note centred");
             cv_text_in(x, y + TL_NY, TL_W, &AF_S, nb, T_INK, fill);
-            if (step_chance(st) < 100u || st->cond)
+            if (remote?prob:step_chance(st)<100u || st->cond)
                 cv_rect(x + 2, y + 2, 4, 4, T_INK);
         }
-        if ((locks >> si) & 1u)
+        if (
+#if FELUCCA_CAFA
+            remote ? (flags & (cafa_nv_section(CAFA_NATIVE_PREFS,0) ? 16u : 8u)) :
+#endif
+            ((locks >> si)&1u))
             cv_rect(x + TL_W - 6, y + 2, 4, 4, on || cur ? T_INK : T_MID);
         fmt_int(nb, (int32_t)si + 1);
         GFX_HOOK_ALIGN(x, 0, x + TL_W, 0, AL_H, "step tile number centred");
-        cv_text_in(x, y + TL_H + 3 - AF_S_CAP_Y, TL_W, &AF_S, nb, song.playing && si == t->seq_idx ? T_REC : T_MID, g);
+        cv_text_in(x, y + TL_H + 3 - AF_S_CAP_Y, TL_W, &AF_S, nb, played ? T_REC : T_MID, g);
     }
-    for (i = 0; nsel.a1 && i < 2u; i++) {              /* (2.0) a range: framed, a row at a time */
+    for (i = 0; !remote && nsel.a1 && i < 2u; i++) {              /* (2.0) a range: framed, a row at a time */
         int32_t a = (int32_t)sel_lo() - (int32_t)(base + 8u * i), b = (int32_t)sel_hi() - (int32_t)(base + 8u * i);
         a = a < 0 ? 0 : a;
         b = b > 7 ? 7 : b;
@@ -570,6 +465,9 @@ static void graph_tiles(const track_t *t, uint16_t c)
 }
 static void graph_roll(const track_t *t, uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_notes(c);return;}
+#endif
     uint32_t i, k, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u, ncol, mask = scale_mask(t), held = pr_held();
     uint64_t locks = motion_lock_steps(trk_index(t));
     int32_t r, ybot = PR_Y0 + PR_ROWS * PR_RH, gw;
@@ -689,59 +587,107 @@ static void graph_roll(const track_t *t, uint16_t c)
  * underlaid RAISE, the cursor framed in TEXT; a TEXT bar over the step playing */
 static void graph_grid(const track_t *t, uint16_t c)
 {
-    uint32_t l, i, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u;
-    uint64_t locks = motion_lock_steps(trk_index(t));
+    int remote=0;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)remote=1;
+#endif
+    uint32_t l,i,len=remote?0u:(uint32_t)t->p[P_SLEN],base=remote?0u:ui.bank*16u;
+    uint64_t locks=remote?0u:motion_lock_steps(trk_index(t));
+#if FELUCCA_CAFA
+    if(remote){uint32_t bytes;const uint8_t *cells=cafa_nv_section(CAFA_NATIVE_CELLS,&bytes);
+        len=cells?cafa_native_u14(cells)/8u:0u;
+        base=cafa_native_u14(cafa_native_profile_view+17);}
+#endif
     int32_t y0 = 6;
-    for (i = 0; i < 16u && base + i < len; i++)     /* a parameter lock: a mark over the step */
-        if ((locks >> (base + i)) & 1u)
+    for (i = 0; i < 16u && (remote?i<len:base+i<len); i++)     /* a parameter lock: a mark over the step */
+        if (!remote && ((locks >> (base + i)) & 1u))
             cv_rect(41 + (int32_t)i * 12, 1, 8, 2, T_ACCENT);
     for (l = 0; l < NLANE; l++) {
         int32_t y = y0 + 4 + (int32_t)l * 14;
-        int sel = l == ui.lane;
+        int sel=remote?0:l==ui.lane;
+#if FELUCCA_CAFA
+        if(remote)sel=l==cafa_native_u14(cafa_native_profile_view+24)%NLANE;
+#endif
         uint16_t row = sel ? T_RAISE : T_SURF;
         if (sel) {
             GFX_HOOK_ALIGN(0, 0, 240, 0, AL_H | AL_CELLS, "drum lane fill centred");
             cv_rrect(6, y, 228, 14, 3, T_RAISE, T_SURF);   /* (6 .. 234, as a list row; the hits 40 .. 230) */
         }
         GFX_HOOK_ALIGN(0, y + 2, 0, y + 12, AL_V, "drum lane label on its hits' line");
-        cv_text_on(10, y - 1, &AF_S, drum_lane_abbr(t, l), (drum_mute[trk_index(t)] >> l) & 1u ? T_DIM :   /* ((1.3) muted:
+        const char *lane_name=remote?"":drum_lane_abbr(t,l);
+#if FELUCCA_CAFA
+        char remote_lane[17];
+        if(remote){const uint8_t *r=cafa_nv_row(l);if(r)cafa_native_text(remote_lane,r,16);else remote_lane[0]=0;lane_name=remote_lane;}
+#endif
+        cv_text_on(10, y - 1, &AF_S, lane_name, !remote && ((drum_mute[trk_index(t)] >> l) & 1u) ? T_DIM :   /* ((1.3) muted:
                                                                                                     * dim) */
                    sel ? T_ACCENT : T_MID, row);   /* ink rows 2 .. 11, as the hits */
-        for (i = 0; i < 16u && base + i < len; i++) {
-            const step_t *st = &t->step[base + i];
+        for (i = 0; i < 16u && (remote?i<len:base+i<len); i++) {
+            const step_t *st=remote?0:&t->step[base+i];
             uint32_t b = 1u << l;
-            int32_t x = 40 + (int32_t)i * 12, hx = clamp(x + st->nudge * 12 / 64, 40, 220);   /* ((Skiff) its NUDGE) */
-            if ((step_lanes(st) & b) && step_ratchet(st) > 1u)
-                pr_split(hx, y + 2, 10, 10, (step_accents(st) & b) ? T_ACCENT : c, step_ratchet(st));
-            else if ((step_lanes(st) & b) && ux.crypt)   /* (Skiff) CRYPT: a hit a # */
-                cr_ch(hx + 2, y + 11, &AF_S, '#', (step_accents(st) & b) ? T_ACCENT : c);
-            else if ((step_lanes(st) & b) && ux.quark) {   /* (Skiff Q4) QUARK: a hit a bunch of particles */
-                qk_disc(hx + 5, y + 7, 4, (step_accents(st) & b) ? T_ACCENT : c);
-                cv_rect(hx + 3, y + 5, 1, 1, ux_mix((step_accents(st) & b) ? T_ACCENT : c, T_TEXT, 60));
-            } else if ((step_lanes(st) & b) && ux.neon)  /* (Skiff N5) NEON: a hit a lit tube */
-                ne_tube(hx, y + 2, 10, 10, (step_accents(st) & b) ? T_ACCENT : c, row);
-            else if (step_lanes(st) & b)
-                cv_rrect(hx, y + 2, 10, 10, 2, (step_accents(st) & b) ? T_ACCENT : c, row);
+            uint32_t on,accent,ratchet;int32_t nudge=0;
+#if FELUCCA_CAFA
+            if(remote){const uint8_t *cell=cafa_nv_cell(l*16u+i);uint32_t flags=cell?cell[2]:0u;
+                on=flags&1u;accent=flags&32u;ratchet=1u;
+                if(cell && cell[3]>='2' && cell[3]<='4' && cell[4]==' ')ratchet=cell[3]-'0';
+                if(cell)nudge=((int32_t)cafa_native_u14(cell)-8192)*12/16383;}
+            else
+#endif
+            {on=(step_lanes(st)&b)!=0u;accent=(step_accents(st)&b)!=0u;ratchet=step_ratchet(st);nudge=st->nudge*12/64;}
+            int32_t x=40+(int32_t)i*12,hx=clamp(x+nudge,40,220);
+            if(on && ratchet>1u)
+                pr_split(hx,y+2,10,10,accent?T_ACCENT:c,ratchet);
+            else if(on && ux.crypt)
+                cr_ch(hx+2,y+11,&AF_S,'#',accent?T_ACCENT:c);
+            else if(on && ux.quark) {
+                qk_disc(hx+5,y+7,4,accent?T_ACCENT:c);
+                cv_rect(hx+3,y+5,1,1,ux_mix(accent?T_ACCENT:c,T_TEXT,60));
+            } else if(on && ux.neon)
+                ne_tube(hx,y+2,10,10,accent?T_ACCENT:c,row);
+            else if(on)
+                cv_rrect(hx,y+2,10,10,2,accent?T_ACCENT:c,row);
             else
                 cv_rect(x + 4, y + 6, 2, 2, i % 4u == 0u || sel ? T_MID : T_DIM);
         }
         if (sel) {                                     /* the cursor ((2.0) the range): a 1 px frame ((Skiff N5) NEON: in
                                                        * the accent) */
-            int32_t a = (int32_t)sel_lo() - (int32_t)base, b = (int32_t)sel_hi() - (int32_t)base;
+            int32_t a=0,b=0;
+#if FELUCCA_CAFA
+            if(remote){uint32_t cursor=cafa_native_u14(cafa_native_profile_view+20);a=b=cursor>=base?(int32_t)(cursor-base):-1;}
+            else
+#endif
+            {a=(int32_t)sel_lo()-(int32_t)base;b=(int32_t)sel_hi()-(int32_t)base;}
             a = a < 0 ? 0 : a;
             b = b > 15 ? 15 : b;
-            if (a <= b && base + (uint32_t)a < len)
+            if (a <= b && (remote?(uint32_t)a<len:base+(uint32_t)a<len))
                 cv_frame(39 + a * 12, y + 1, (b - a) * 12 + 12, 12, ux.neon ? T_ACCENT : ux.crypt ? CR_GOLD : T_TEXT);
         }
     }
-    if (song.playing && t->seq_idx < len && t->seq_idx / 16u == ui.bank)
-        cv_rect(40 + (int32_t)(t->seq_idx % 16u) * 12, y0 - 1, 10, 3, T_TEXT);
+#if FELUCCA_CAFA
+    if(remote){uint32_t play=cafa_native_u14(cafa_native_profile_view+22);
+        if(play>=base && play-base<len && play-base<16u)cv_rect(40+(int32_t)(play-base)*12,y0-1,10,3,T_TEXT);}
+    else
+#endif
+    if(song.playing && t->seq_idx<len && t->seq_idx/16u==ui.bank)
+        cv_rect(40+(int32_t)(t->seq_idx%16u)*12,y0-1,10,3,T_TEXT);
 }
 /* SCL: the 12 keys as rounded bars (black keys high, white keys low): in the scale THEME, the root the
  * accent, out of the scale RAISE */
 static void graph_scale(const track_t *t, uint16_t c)
 {
     static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t bytes,i;const uint8_t *keys=cafa_nv_section(6,&bytes);
+        uint32_t root=keys?keys[19]%12u:0u;
+        for(i=0;i<12u;i++) {
+            uint32_t note=60u+i,active=keys && (keys[note/7u]&(1u<<(note%7u)));
+            int32_t x=13+(int32_t)i*18;
+            cv_rrect(x+3,BLACK[i]?6:38,10,52,3,active?(i==root?T_ACCENT:c):T_RAISE,T_SURF);
+        }
+        return;
+    }
+#endif
     uint32_t i, mask = scale_mask(t);
     for (i = 0; i < 12u; i++) {
         uint32_t deg = (i + 12u - (uint32_t)t->p[P_ROOT]) % 12u;
@@ -759,12 +705,12 @@ static void panel_alert(uint32_t id, const char *a);
  * the bottom, named), its bar from when the strum plays it (0 .. 120 ms across), the root's ACCENT; the stroke a line
  * through their starts in the order played; NEON tubes, QUARK a particle and its trail, CRYPT # rows, the stroke in
  * blood. Top right "DOWN 40 ms" ("ALT: DOWN, THEN UP": the downstroke drawn) */
-static void graph_strum(const track_t *t, uint16_t c, const uint8_t *nn, uint32_t n, int32_t r, uint16_t mask)
+static void graph_strum(uint16_t c, const uint8_t *nn, uint32_t n, int32_t r,
+                        const char *title, int32_t speed, int32_t direction)
 {
-    int32_t i, pitch, th, sx[CHORD_MAX], sy[CHORD_MAX], ms = clamp(t->p[P_STRUM], 0, 100), dir = clamp(t->p[P_SDIR], 0, 2);
+    int32_t i, pitch, th, sx[CHORD_MAX], sy[CHORD_MAX], ms = clamp(speed, 0, 100), dir = clamp(direction, 0, 2);
     char b[24];
-    chord_name(b, (uint32_t)r, mask);
-    cv_text_on(14, 8, &AF_M, b, T_TEXT, T_SURF);
+    cv_text_on(14, 8, &AF_M, title, T_TEXT, T_SURF);
     if (dir == 2)
         str_cpy(b, "ALT: DOWN, THEN UP", sizeof b);
     else {
@@ -800,9 +746,83 @@ static void graph_strum(const track_t *t, uint16_t c, const uint8_t *nn, uint32_
     for (i = 1; i < (int32_t)n; i++)                 /* (the stroke, in the order played) */
         cv_line_t(sx[i - 1], sy[i - 1], sx[i], sy[i], ux.crypt ? CR_BLOOD : ux.neon ? T_ACCENT : T_TEXT, 1);
 }
+#if FELUCCA_CAFA
+/* Typed stock CHORD/FOLLOW rows are optional; a generic ROWS section keeps the older keyboard view. */
+static int cafa_graph_chord_follow(uint16_t c, int follow)
+{
+    static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+    uint32_t bytes, i, n=0, hi=0, count, lo, by, mode, source;
+    const uint8_t *rows=cafa_nv_section(CAFA_NATIVE_ROWS,&bytes), *r, *keys;
+    char tag[17], title[25], caption[17];
+    uint8_t nn[CHORD_MAX];
+    if(!rows || (rows[0]!=1u && rows[0]!=2u))return 0;
+    r=rows+1u;cafa_native_text(tag,r,16u);
+    if(!str_eq(tag,follow?"FOLLOW VIEW V1":"CHORD VIEW V1"))return 0;
+    mode=cafa_native_u14(r+41u);source=r[40];
+    if(mode>4u || (follow && mode==4u) || source>cafa_native_u14(cafa_native_profile_view+15u) ||
+       (mode==3u && rows[0]!=1u) || (mode!=3u && rows[0]!=2u))return 0;
+    cafa_native_text(title,cafa_native_profile_view+57u,24u);
+    if(mode<3u) {
+        char hint[25];cafa_native_text(hint,rows+1u+48u+16u,24u);
+        panel_note(title,hint[0]?hint:0,0);
+        return 1;
+    }
+    keys=cafa_nv_section(CAFA_NATIVE_KEYBOARD,&bytes);
+    if(!keys)return 0;
+    for(i=0;i<128u;i++)if(keys[i/7u]&(1u<<(i%7u))) {
+        hi=i;if(n<CHORD_MAX)nn[n++]=(uint8_t)i;
+    }
+    if(!n)return 0;
+    lo=cafa_native_u14(r+43u);by=cafa_native_u14(r+45u);
+    if(lo>127u || lo>hi || by>139u)return 0;
+    if(mode==4u) {
+        const uint8_t *detail=rows+1u+48u;
+        if(cafa_native_u14(detail+41u)>100u || cafa_native_u14(detail+43u)>2u)return 0;
+        graph_strum(c,nn,n,keys[19],title,(int32_t)cafa_native_u14(detail+41u),
+                    (int32_t)cafa_native_u14(detail+43u));
+        return 1;
+    }
+    cafa_native_text(caption,r+16u,16u);
+    cv_text_on(14,8,&AF_M,title,T_TEXT,T_SURF);
+    GFX_HOOK_ALIGN(0,0,0,8+AF_M.asc,AL_B,"chord caption on the name's baseline");
+    cv_text_r(226,8+AF_M.asc-AF_S.asc,&AF_S,caption,T_MID,T_SURF);
+    count=hi-lo<24u?24u:36u;
+    GFX_HOOK_ALIGN(0,0,240,0,AL_H|AL_CELLS|AL_N(count),"chord keys centred");
+    for(i=0;i<count;i++) {
+        uint32_t note=lo+i,on=note<128u&&(keys[note/7u]&(1u<<(note%7u)));
+        uint32_t w=216u/count;
+        int32_t x=13+(int32_t)(i*w);
+        uint16_t active=follow&&source?T_TRK(source-1u):c;
+        cv_rrect(x,BLACK[note%12u]?36:62,(int32_t)w-2,48,w>6u?3:2,
+                 !on?T_RAISE:follow?(by>=128u?note%12u==by-128u:note==by)?T_ACCENT:active:
+                    note%12u==keys[19]%12u?T_ACCENT:c,T_SURF);
+    }
+    return 1;
+}
+#endif
 static void graph_chord(const track_t *t, uint16_t c)
 {
     static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        if(cafa_graph_chord_follow(c,0))return;
+        const uint8_t *keys;uint32_t bytes,i,lo=48u,count=24u,root;
+        char title[25];keys=cafa_nv_section(6,&bytes);
+        if(keys) {
+            for(i=0;i<128u;i++)if(keys[i/7u]&(1u<<(i%7u))){lo=i-i%12u;break;}
+            root=keys[19];
+        } else root=0u;
+        cafa_native_text(title,cafa_native_profile_view+57,24);
+        cv_text_on(14,8,&AF_M,title,T_TEXT,T_SURF);
+        cv_text_r(226,8+AF_M.asc-AF_S.asc,&AF_S,cafa_native_profile_view[6]==14u?"FOLLOW":"CHORD",T_MID,T_SURF);
+        for(i=0;i<count;i++) {
+            uint32_t note=lo+i,on=keys && note<128u && (keys[note/7u]&(1u<<(note%7u)));
+            int32_t x=13+(int32_t)(i*9u);
+            cv_rrect(x,BLACK[note%12u]?36:62,7,48,2,!on?T_RAISE:note%12u==root%12u?T_ACCENT:c,T_SURF);
+        }
+        return;
+    }
+#endif
     uint8_t nn[CHORD_MAX];
     uint32_t n, i, j, k = trk_index(t), lo, cnt, w;
     int32_t r;
@@ -830,7 +850,8 @@ static void graph_chord(const track_t *t, uint16_t c)
     if (trk_vmode(t) != V_POLY && !t->p[P_AMODE])
         cap = "ROOT ONLY";                              /* MONO / LEGATO / UNISON ((2.0.3) the ARP takes it whole) */
     else if (t->p[P_STRUM] && trk_vmode(t) == V_POLY) {   /* ((2.5) STRUM on: the notes in time) */
-        graph_strum(t, c, nn, n, r, mask);
+        chord_name(b, (uint32_t)r, mask);
+        graph_strum(c, nn, n, r, b, t->p[P_STRUM], t->p[P_SDIR]);
         return;
     }
     chord_name(b, (uint32_t)r, mask);
@@ -856,6 +877,9 @@ static void graph_chord(const track_t *t, uint16_t c)
 static void graph_follow(const track_t *t)
 {
     static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){if(!cafa_graph_chord_follow(T_THEME,1))graph_chord(0,T_THEME);return;}
+#endif
     uint32_t l = (uint32_t)t->p[P_FOLLOW] - 1u, i, lo, cnt, w, by, rel;
     const fol_src_t *s;
     char b[12], cap[24];
@@ -908,6 +932,18 @@ static void graph_fx(const track_t *t, uint16_t c)
 {
     uint32_t i;
     for (i = 0; i < 4u; i++) {
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *p=cafa_native_profile_view+112u+36u*i;
+            int32_t h=(int32_t)cafa_native_u14(p+30)*76/16383,x=CARD_X(i)+26;
+            cv_rrect(x,6,4,82,2,T_RAISE,T_SURF);
+            if(ux.crypt)cr_meter(x-1,88,h,!h);
+            else if(ux.quark)qk_tower(x-3,88,10,80,h,c,T_ACCENT);
+            else if(ux.neon)ne_vu(x-3,88,10,80,h,0,ux_mix(T_SURF,T_TEXT,8),T_TEXT);
+            else {if(h>3)cv_rrect(x,88-h,4,h,2,c,T_RAISE);cv_rrect(x-4,85-h,12,6,3,c,T_SURF);}
+            continue;
+        }
+#endif
         int32_t h = t->p[P_DIST + i] * 76 / 127, x = CARD_X(i) + 26;
         cv_rrect(x, 6, 4, 82, 2, T_RAISE, T_SURF);
         if (ux.crypt) {                              /* (Skiff) CRYPT: the send a torch (the MIXER's) */
@@ -967,6 +1003,18 @@ static void graph_lanes(const track_t *t, uint16_t c)
     uint32_t i;
     for (i = 0; i < 8u; i++) {
         int32_t x = 3 + 29 * (int32_t)i;
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *r=cafa_nv_row(i);char name[17];
+            uint32_t sel=cafa_native_u14(cafa_native_profile_view+24)==i;
+            int32_t h=r?(int32_t)cafa_native_u14(r+41)*70/16383:0;
+            if(r)cafa_native_text(name,r,16);else name[0]=0;
+            lane_fader(x,82,76,h,(int)sel,c);
+            if(sel)cv_rect(x+2,90,24,16,T_THEME);
+            cv_text_in(x+2,90+CAP_IN(S,16),24,&AF_S,name,sel?T_INK:T_MID,sel?T_THEME:T_SURF);
+            continue;
+        }
+#endif
         int sel = i == ui.lane % 8u;
         lane_fader_of(t, i, x, 82, 76, t->p[P_LN0 + i] * 70 / 127, sel, c);
         lane_tile(t, i, x, 90, sel);
@@ -989,12 +1037,34 @@ static void pan_txt(char *v, int32_t pan)
  * nucleus on its energy levels */
 static void graph_lmix(const track_t *t, uint16_t c)
 {
-    uint32_t i, l = page_lane();
+    uint32_t i, l = 0u;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)l=cafa_native_u14(cafa_native_profile_view+24)%8u;
+    else
+#endif
+    l=page_lane();
     for (i = 0; i < 8u; i++) {
-        int32_t x = 3 + 29 * (int32_t)i, pan = clamp(t->p[P_LPAN0 + i], -64, 63), px = x + 13 + pan * 9 / 64, k;
+        int32_t x = 3 + 29 * (int32_t)i, pan = 0, px, k;
         int sel = i == l;
         uint16_t col = sel ? T_THEME : c;
         char v[6];
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *r=cafa_nv_row(i);char name[17];
+            int32_t h=r?(int32_t)cafa_native_u14(r+41)*53/16383:0;
+            pan=r?(int32_t)cafa_native_u14(r+43)*127/16383-64:0;
+            px=x+13+pan*9/64;
+            if(r)cafa_native_text(name,r,16);else name[0]=0;
+            lane_fader(x,62,56,h,sel,c);
+            cv_rect(x+4,71,20,2,T_RAISE);cv_rect(x+13,69,1,7,T_RAISE);cv_rect(px-2,69,5,7,col);
+            pan_txt(v,pan);
+            cv_text_in(x,78+CAP_IN(S,12),28,&AF_S,v,sel?T_TEXT:T_MID,T_SURF);
+            if(sel)cv_rect(x+2,92,24,16,T_THEME);
+            cv_text_in(x+2,92+CAP_IN(S,16),24,&AF_S,name,sel?T_INK:T_MID,sel?T_THEME:T_SURF);
+            continue;
+        }
+#endif
+        pan=clamp(t->p[P_LPAN0+i],-64,63);px=x+13+pan*9/64;
         lane_fader_of(t, i, x, 62, 56, t->p[P_LN0 + i] * 53 / 127, sel, c);   /* (100 %: the cap on the track's top) */
         if (ux.crypt) {
             cr_leader(x + 4, x + 24, 72);
@@ -1021,20 +1091,34 @@ static void graph_lmix(const track_t *t, uint16_t c)
  * open (DEPTH), STUT hatched (it repeats the last 'x'); the step playing underlined. Grey when OFF. */
 static void graph_slicer(const track_t *t, uint16_t c)
 {
-    uint32_t i, pat = sl_pattern(t), mode = (uint32_t)t->p[P_SLCR], cur = sl[t - trk].idx;
-    int32_t open = 70 - t->p[P_SLDEPTH] * 70 / 127;      /* px a closed GATE step keeps */
-    uint16_t col = mode == SL_OFF ? T_DIM : c;
+    int remote=0;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)remote=1;
+#endif
+    uint32_t i,pat=remote?0u:sl_pattern(t),mode=remote?SL_GATE:(uint32_t)t->p[P_SLCR],cur=remote?0u:sl[t-trk].idx;
+    int32_t open=remote?0:70-t->p[P_SLDEPTH]*70/127;
+#if FELUCCA_CAFA
+    if(remote){uint32_t at=cafa_native_u14(cafa_native_profile_view+22),first=cafa_native_u14(cafa_native_profile_view+17);
+        cur=at>=first && at-first<16u?at-first:16u;}
+#endif
     for (i = 0; i < 16u; i++) {
         int32_t x = bar_x(i), y;
+        uint32_t hit=(pat>>i)&1u;int32_t height=open;
+#if FELUCCA_CAFA
+        if(remote){const uint8_t *cell=cafa_nv_cell(i);uint32_t flags=cell?cell[2]:0u;
+            hit=flags&1u;mode=(flags&64u)?SL_OFF:(flags&16u)?SL_STUT:SL_GATE;
+            height=cell?(int32_t)cafa_native_u14(cell)*70/16383:0;}
+#endif
+        uint16_t col=mode==SL_OFF?T_DIM:c;
         if (ux.crypt) {                              /* (Skiff) CRYPT: # columns: an 'x' step full, a GATE step ':' as
                                                        * high as it stays open, STUT '=' (it repeats the last 'x') */
-            int32_t hit = (pat >> i) & 1u, n = hit || mode == SL_STUT ? 8 : (open + 4) / 9, r;
+            int32_t n=hit || mode==SL_STUT?8:(height+4)/9,r;
             for (r = 0; r < n; r++)
                 cr_ch(x + 2, 79 - r * 9, &AF_S, hit ? '#' : mode == SL_STUT ? '=' : ':', hit || mode == SL_STUT ? col : T_DIM);
         } else if (ux.quark && mode != SL_STUT) {    /* (Skiff Q4) QUARK: towers: an 'x' step full, a GATE step as high as
                                                       * it stays open, dim */
-            qk_tower(x, 80, 9, 72, (pat >> i) & 1u ? 72 : open, (pat >> i) & 1u ? col : T_DIM, 0);
-        } else if ((pat >> i) & 1u) {
+            qk_tower(x, 80, 9, 72, hit ? 72 : height, hit ? col : T_DIM, 0);
+        } else if (hit) {
             if (ux.neon && mode != SL_OFF)           /* ((Skiff N4) NEON: a lit tube, its glow) */
                 cv_rect(x - 1, 7, 11, 74, ux_mix(col, T_SURF, 65));
             cv_rrect(x, 8, 9, 72, 2, mode == SL_OFF ? T_RAISE : col, T_SURF);
@@ -1043,8 +1127,8 @@ static void graph_slicer(const track_t *t, uint16_t c)
                 cv_rect(x, y, 9, 1, col);
         } else {
             cv_rrect(x, 77, 9, 3, 1, T_RAISE, T_SURF);
-            if (open > 3)
-                cv_rrect(x, 80 - open, 9, open, 2, T_RAISE, T_SURF);
+            if (height > 3)
+                cv_rrect(x, 80 - height, 9, height, 2, T_RAISE, T_SURF);
         }
         if (mode != SL_OFF && i == cur)
             cv_rect(x, 84, 9, 2, T_ACCENT);
@@ -1054,60 +1138,7 @@ static void graph_slicer(const track_t *t, uint16_t c)
  * its pattern looped, no swing): full up to the box's top, down by DEPTH at each hit (the source's colour under it,
  * a DRUM source's KICK lane only), back in a line over RELEASE; a hit's dip from the bar before runs into the bar's
  * start. BY OFF (or the track itself): the empty box */
-static void graph_duck(const track_t *t, uint16_t c)
-{
-    uint32_t src = (uint32_t)t->p[P_DKSRC], k = (uint32_t)(t - trk), i, x, nh = 0;
-    uint32_t bar = 4u * beat_samples(), per, len, nb, rel, hit[NSTEP];
-    const track_t *s;
-    uint8_t L[37] = {0};                              /* (Skiff) CRYPT: its levels, a 6 px column each */
-    if (!ux.crypt)
-        cv_rect(8, 10, 224, 62, T_RAISE);
-    if (!src || src > NTRK || src - 1u == k) {
-        if (ux.crypt)                                /* (no ducking: the level full, dim) */
-            cr_art(10, 11, 6, 10, L, 37, T_DIM);
-        return;
-    }
-    s = &trk[src - 1u];
-    per = div_samples((uint32_t)s->p[P_SDIV]);
-    len = s->p[P_SLEN] > 0 ? (uint32_t)s->p[P_SLEN] : 1u;
-    nb = per ? (bar / per ? bar / per : 1u) : 0u;      /* (2BAR, 4BAR: its step 1 at the bar's start) */
-    rel = TIME_MS_X10[t->p[P_DKREL] & 127] * 441u / 100u;
-    for (i = 0; i < nb && i < NSTEP; i++) {
-        uint32_t l = step_lanes(&s->step[i % len]);
-        if (drum_track(s) ? l & 1u : l) {
-            hit[nh++] = i * per;
-            if (ux.crypt)
-                cr_ch(7 + (int32_t)(i * per / (bar / 224u)), 88, &AF_S, '^', T_TRK(src - 1u));
-            else
-                cv_rect(8 + (int32_t)(i * per / (bar / 224u)), 78, 3, 8, T_TRK(src - 1u));
-        }
-    }
-    for (x = 0; x < 224u; x++) {
-        uint32_t tau = x * (bar / 224u), j = nh, dip = 0;
-        while (j && hit[j - 1u] > tau)
-            j--;
-        if (nh) {
-            uint32_t dt = j ? tau - hit[j - 1u] : tau + bar - hit[nh - 1u];
-            if (dt < rel)
-                dip = 62u * (uint32_t)t->p[P_DKAMT] * ((rel - dt) / (rel / 1024u + 1u)) / (127u * 1024u);
-        }
-        if (ux.crypt) {
-            if (x % 6u == 2u && x / 6u < 37u)
-                L[x / 6u] = (uint8_t)((dip * 6u + 31u) / 62u);
-        } else if (ux.quark) {                       /* ((Skiff Q4) QUARK: a Monte Carlo fill under its level) */
-            qk_mc(8 + (int32_t)x, 10 + (int32_t)dip, 72);
-            cv_rect(8 + (int32_t)x, 10 + (int32_t)dip, 1, 2, c);
-        } else if (ux.neon) {                        /* ((Skiff N4) NEON: the sun's bands under its level, lit on top) */
-            ne_band_col(8 + (int32_t)x, 7 + (int32_t)dip, 10, 72);
-            cv_rect(8 + (int32_t)x, 10 + (int32_t)dip, 1, 2, c);
-        } else
-            cv_rect(8 + (int32_t)x, 10 + (int32_t)dip, 1, 62 - (int32_t)dip, c);
-    }
-    if (ux.crypt) {                                  /* (Skiff) CRYPT: the level as ASCII art over its ':' shade (ENV's) */
-        cr_dots(10, 11, 6, 10, L, 37, 6, T_DIM);
-        cr_art(10, 11, 6, 10, L, 37, c);
-    }
-}
+
 /* MOD page: the four slots as rows "1 LFO > CUT +50%", the one KNOB 2..4 edit selected, slots that do
  * nothing (SRC, DST or AMT at 0) dim */
 /* MOD ((2.0, D 1A) design/mockups/v2_mod.png): the seven fixed routings as a grid, the LFO and the ENV a row each, PITCH
@@ -1118,6 +1149,42 @@ static void graph_mod(const track_t *t, uint16_t c)
 {
     static const char *const COL[4] = {"PITCH", "CUT", "SHAPE", "AMP"};
     static const uint8_t CX[4] = {84, 124, 166, 208};
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t q,k,selected=cafa_native_u14(cafa_native_profile_view+24);
+        for(k=0;k<4u;k++) {
+            const uint8_t *r=cafa_nv_row(k);char label[17];
+            if(r)cafa_native_text(label,r,16);else label[0]=0;
+            cv_text_on(CX[k]-text_w(&AF_S,label)/2,16-AF_S.asc,&AF_S,label,T_MID,T_SURF);
+        }
+        for(q=0;q<8u;q++) {
+            const uint8_t *r=cafa_nv_row(q);char value[17];
+            int32_t base=35+21*(int32_t)(q/4u),x=CX[q%4u];
+            int sel=q==selected;
+            if(q%4u==0u)cv_text_on(12,base-AF_S.asc,&AF_S,q?"ENV":"LFO",T_TEXT,T_SURF);
+            if(r)cafa_native_text(value,r+16,16);else value[0]=0;
+            if(sel)cv_rect(x-19,base-14,39,19,T_THEME);
+            cv_text_on(x-text_w(&AF_M,value)/2,base-AF_M.asc,&AF_M,value,sel?T_INK:r && !(r[40]&16u)?c:T_DIM,
+                       sel?T_THEME:T_SURF);
+        }
+        cv_rect(8,64,224,1,T_LINE);
+        for(k=0;k<4u;k++) {
+            const uint8_t *r=cafa_nv_row(8u+k);char source[17],dest[17],amount[9],num[8];
+            int32_t y=67+18*(int32_t)k,sel=8u+k==selected;
+            uint16_t bg=sel?T_THEME:T_SURF,fg=sel?T_INK:r && !(r[40]&16u)?c:T_DIM;
+            if(r){cafa_native_text(source,r,16);cafa_native_text(dest,r+16,16);cafa_native_text(amount,r+32,8);}
+            else{source[0]=dest[0]=amount[0]=0;}
+            if(sel)cv_rrect(6,y,228,17,4,T_THEME,T_SURF);
+            fmt_int(num,(int32_t)k+8);
+            cv_text_on(12,y+13-AF_S.asc,&AF_S,num,sel?T_INK:T_MID,bg);
+            cv_free_text(34,y+13-AF_S.asc,&AF_S,source,fg,bg,44);
+            cv_line(78,y+8,95,y+8,fg);cv_line(91,y+4,95,y+8,fg);cv_line(91,y+12,95,y+8,fg);
+            cv_free_text(102,y+13-AF_S.asc,&AF_S,dest,fg,bg,78);
+            cv_text_r(228,y+13-AF_S.asc,&AF_S,amount,fg,bg);
+        }
+        return;
+    }
+#endif
     uint32_t k, q;
     char b[16];
     const char *unit;
@@ -1241,8 +1308,42 @@ static void sample_wave_tick(const track_t *t)
     sample_wave.ready = sample_wave.pos == z->n;
 }
 
+/* A waveform envelope uses two points at each x: low, then high. Legacy
+ * single-value curves keep their original rendering. */
+#if FELUCCA_CAFA
+static int graph_wave_pairs(const uint8_t *curve, uint32_t n)
+{
+    uint32_t i;
+    if(n<4u || (n&1u))return 0;
+    for(i=0;i<n;i+=2u)
+        if(cafa_native_u14(curve+2u+4u*i)!=cafa_native_u14(curve+6u+4u*i))return 0;
+    return 1;
+}
+#endif
 static void graph_sample(uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        const uint8_t *curve,*markers;uint32_t bytes,n,i,paired;
+        curve=cafa_nv_section(3,&bytes);
+        cv_rect(PANEL_X0,48,PANEL_W,1,T_RAISE);
+        if(!curve){panel_note("NO SAMPLE",0,0);return;}
+        n=cafa_native_u14(curve);
+        paired=graph_wave_pairs(curve,n);
+        for(i=0;i<n;i+=paired?2u:1u) {
+            int32_t x=12+(int32_t)cafa_native_u14(curve+2u+4u*i)*216/16383;
+            int32_t y=paired?48-((int32_t)cafa_native_u14(curve+4u+4u*i)-8192)*38/8192:48-(int32_t)cafa_native_u14(curve+4u+4u*i)*38/16383;
+            int32_t y2=paired?48-((int32_t)cafa_native_u14(curve+8u+4u*i)-8192)*38/8192:48;
+            cv_line(x,y,x,y2,c);
+        }
+        markers=cafa_nv_section(4,&bytes);
+        if(markers)for(i=0;i<markers[0];i++) {
+            int32_t x=12+(int32_t)cafa_native_u14(markers+1u+13u*i)*216/16383;
+            cv_line(x,4,x,90,T_MID);
+        }
+        return;
+    }
+#endif
     uint32_t i;
     const smp_zone_t *z = sample_wave.zone;
     cv_rect(PANEL_X0, 48, PANEL_W, 1, T_RAISE);
@@ -1257,12 +1358,57 @@ static void graph_sample(uint16_t c)
     }
 }
 
+#if FELUCCA_CAFA
+static void cafa_nv_slices(void)
+{
+    const uint8_t *curve,*markers;uint32_t bytes,mb,n,i,paired,selected=cafa_native_u14(cafa_native_profile_view+24);
+    const int32_t width=216;
+    curve=cafa_nv_section(3,&bytes);markers=cafa_nv_section(4,&mb);
+    if(!curve){panel_alert(ICON_X_NOFILE,"SAMPLE NOT FOUND");return;}
+    n=cafa_native_u14(curve);paired=graph_wave_pairs(curve,n);
+    for(i=0;i<n;i+=paired?2u:1u) {
+        int32_t x=12+(int32_t)cafa_native_u14(curve+2u+4u*i)*width/16383;
+        int32_t v=(int32_t)cafa_native_u14(curve+4u+4u*i)-8192;
+        int32_t v2=paired?(int32_t)cafa_native_u14(curve+8u+4u*i)-8192:0;
+        cv_line(x,46-v*38/8192,x,46-v2*38/8192,T_THEME);
+    }
+    if(markers) {
+        uint32_t count=markers[0], flagged=0;
+        for(i=0;i<count;i++) flagged|=markers[1u+13u*i+4u]&1u;
+        for(i=0;i<count;i++) {
+            int chosen=flagged?(markers[1u+13u*i+4u]&1u)!=0:i==selected;
+            int32_t x=12+(int32_t)cafa_native_u14(markers+1u+13u*i)*width/16383;
+            cv_rect(x,chosen?2:4,chosen?2:1,chosen?88:84,chosen?T_ACCENT:T_MID);
+        }
+        cv_rrect(12,96,width,3,1,T_RAISE,T_SURF);
+        for(i=0;i<count;i++) {
+            int chosen=flagged?(markers[1u+13u*i+4u]&1u)!=0:i==selected;
+            int32_t x=12+(int32_t)cafa_native_u14(markers+3u+13u*i)*(width-1)/16383;
+            cv_rect(x,94,1,7,chosen?T_ACCENT:T_MID);
+        }
+    }
+    {
+        const uint8_t *detail = cafa_nv_row(0);
+        if (detail) {
+            char length[24], source[12];
+            cafa_native_text(length, detail + 16u, 16u);
+            cafa_native_text(source, detail + 32u, 8u);
+            cv_text(12, 106, &AF_S, "LEN", T_MID);
+            cv_text(38, 106, &AF_S, length, T_MID);
+            cv_text_r(228, 106, &AF_S, source, T_THEME, T_SURF);
+        }
+    }
+}
+#endif
 #if FELUCCA_SLICE
 /* SLICES (ui_slice.c): the waveform from the marker before the selected one to the one after it (the selected
  * slice tinted, its marker the accent, outside the slices DIM), under it the whole material with every marker and
  * the view; then the selected slice's length and the source */
 static void graph_slices(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_slices();return;}
+#endif
     uint32_t a, b, len, n = slice_count(), j = slice_sel(), i, src, div, ma, mb;
     char t[20], u[12];
     if (!slice_src(&src, &div) || !n) {             /* (it plays a sine: eng_slice.c) */
@@ -1319,9 +1465,23 @@ static void graph_wheel(const track_t *t, uint16_t c)
     uint32_t k;
     static const char *const names[9] = {"16", "5.3", "8", "4", "2.7", "2", "1.6", "1.3", "1"};
     for (k = 0; k < 9u; k++) {
-        int32_t x = 11 + (int32_t)k * 25, level = drw_level(t->p, k);
-        if (t->p[P_E4] && k == 8u) level = 0; /* DSP's percussion cancels the 1-foot bar. */
-        int hot = ui.hot_t && cur_page()->id[0] == P_E0 &&
+        int32_t x = 11 + (int32_t)k * 25, level;
+        const uint8_t *bar = 0;
+        const char *footage = names[k];
+        char remote_name[17];
+        int remote = 0;
+#if FELUCCA_CAFA
+        remote = cafa_native_profile_view != 0;
+        if (remote) {
+            bar = cafa_nv_row(k);
+            if (bar) { cafa_native_text(remote_name, bar, 16u); footage = remote_name; }
+        }
+        level = remote ? (bar ? ((int32_t)cafa_native_u14(bar + 41u) * 8 + 8191) / 16383 : 0) : drw_level(t->p, k);
+#else
+        level = drw_level(t->p, k);
+#endif
+        if (!remote && t->p[P_E4] && k == 8u) level = 0; /* DSP's percussion cancels the 1-foot bar. */
+        int hot = !remote && ui.hot_t && cur_page()->id[0] == P_E0 &&
                   (ui.hot_col == 0u || ui.hot_col == (k < 2u ? 1u : k < 4u ? 2u : 3u));
         if (ux.quark)                                /* (Skiff Q4) QUARK: a drawbar a calorimeter tower */
             qk_tower(x + 4, 75, 10, 72, level * 9, hot ? T_ACCENT : c, 0);
@@ -1339,7 +1499,7 @@ static void graph_wheel(const track_t *t, uint16_t c)
         else cv_rrect(x + 3, 73, 12, 2, 1, hot ? T_ACCENT : T_DIM, T_SURF);
         }
         GFX_HOOK_ALIGN(x + 7, 0, x + 11, 0, AL_H, "wheel footage under its drawbar");
-        cv_text_in(x + 3, 82, 12, &AF_S, names[k], T_MID, T_SURF);   /* under the bar, by its ink */
+        cv_text_in(x + 3, 82, 12, &AF_S, footage, T_MID, T_SURF);   /* under the bar, by its ink */
     }
 }
 /* The FM charts' parts: an operator box 21 x 17 (rows 23 px apart, columns 24), junction dots, Manhattan routes */
@@ -1425,12 +1585,80 @@ static uint32_t fm6_alg_of(const track_t *t)
 {
     return t->p[P_E0] >= 1 && t->p[P_E0] <= 32 ? (uint32_t)t->p[P_E0] - 1u : fm6_patch[(t - trk) % NTRK][FP_ALG] & 31u;
 }
+#if FELUCCA_CAFA
+static void cafa_nv_fm_network(uint16_t c)
+{
+    uint32_t k,i,n,maxcol=0u,maxrow=0u,carriers=0u,selected=cafa_native_u14(cafa_native_profile_view+24);
+    uint32_t bytes;const uint8_t *rows=cafa_nv_section(1,&bytes);
+    const uint8_t *edges=cafa_nv_section(9,&bytes),*series=cafa_nv_section(8,&bytes);
+    int32_t x[6],y[6],bus,cl=240,cr=0;char title[25];
+    n=rows?rows[0]:0u;if(n>6u)n=6u;
+    if(!n){panel_note("NO OPERATORS",0,0);return;}
+    for(k=0;k<n;k++) {
+        const uint8_t *r=cafa_nv_row(k);
+        uint32_t col=r?cafa_native_u14(r+41):k,row=r?cafa_native_u14(r+43):0u;
+        if(col>5u)col=5u;if(row>5u)row=5u;
+        if(col>maxcol)maxcol=col;if(row>maxrow)maxrow=row;
+        if(r && (r[40]&2u))carriers|=1u<<k;
+    }
+    bus=50+(27+23*(int32_t)maxrow)/2;
+    for(k=0;k<n;k++) {
+        const uint8_t *r=cafa_nv_row(k);
+        uint32_t col=r?cafa_native_u14(r+41):k,row=r?cafa_native_u14(r+43):0u;
+        if(col>5u)col=5u;if(row>5u)row=5u;
+        x[k]=120+(int32_t)col*24-(int32_t)maxcol*12;
+        y[k]=bus-6-FM_BH-23*(int32_t)row;
+        if(carriers&(1u<<k)){if(x[k]<cl)cl=x[k];if(x[k]>cr)cr=x[k];}
+    }
+    if(edges)for(i=0;i<edges[0];i++) {
+        const uint8_t *e=edges+1u+5u*i;
+        if(e[0]<n && e[1]<n && (e[2]&1u)) {
+            uint16_t ec=cafa_native_u14(e+3u)>8191u?c:T_MID;
+            if(e[0]==e[1])fm_loop(x[e[0]],y[e[0]],ec);
+            else fm_route(x[e[0]],y[e[0]]+FM_BH,x[e[1]],y[e[1]]-3,y[e[1]],ec);
+        }
+    }
+    if(carriers) {
+        for(k=0;k<n;k++)if(carriers&(1u<<k))cv_rect(x[k],y[k]+FM_BH,1,bus-y[k]-FM_BH,T_MID);
+        fm_bus(cl,cr,bus);
+    }
+    for(k=0;k<n;k++) {
+        const uint8_t *r=cafa_nv_row(k);uint32_t active=r && !(r[40]&16u),pick=k==selected;
+        uint16_t fill=(carriers&(1u<<k))&&active?c:T_RAISE;
+        char label[17],num[5];
+        if(r)cafa_native_text(label,r,16);else label[0]=0;
+        if(pick)fill=T_ACCENT;
+        cv_rrect(x[k]-10,y[k],21,FM_BH,3,fill,T_SURF);
+        fmt_int(num,(int32_t)k+1);
+        cv_text_in(x[k]-10,y[k]+CAP_IN(S,FM_BH),21,&AF_S,num,fill==T_RAISE?T_MID:T_INK,fill);
+        if(r && label[0])cv_free_text(x[k]-10,y[k]+FM_BH+2,&AF_S,label,T_MID,T_SURF,38);
+    }
+    if(series) {
+        const uint8_t *p=series+1u;
+        for(i=0;i<series[0];i++) {
+            uint32_t id=p[0],count=p[2],j;int32_t px=0,py=0;
+            if(id<n)for(j=0;j<count;j++) {
+                int32_t sx=10+(int32_t)cafa_native_u14(p+3u+6u*j)*220/16383;
+                int32_t sy=graph_ht-4-(int32_t)cafa_native_u14(p+5u+6u*j)*12/16383;
+                if(j)cv_line_t(px,py,sx,sy,id==selected?T_ACCENT:T_MID,1);
+                px=sx;py=sy;
+            }
+            p+=3u+6u*count;
+        }
+    }
+    cafa_native_text(title,cafa_native_profile_view+57,24);
+    cv_text(10,4-GOY,&AF_S,title,T_MID);
+}
+#endif
 /* FM6's EDIT pages: the algorithm, drawn as graph_fm draws DIGITAL's, "ALG 05" top left. Carriers THEME with INK
  * numerals, modulators RAISE with THEME ones; an operator at output level 0: a DIM numeral (a carrier on RAISE).
  * Routes THEME, the feedback loop MID (DIM at feedback 0), the output bus MID. The knob just turned in ACCENT:
  * ALG and PTCH the label, FB the loop, MLVL the routes, MRAT MEG VMOD the modulators, DTUN the carriers. */
 static void graph_fm6(const track_t *t, uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_fm_network(c);return;}
+#endif
     uint32_t alg = fm6_alg_of(t), k, j, car = fm6_car_ops(alg), top = 0, hi = 0, fbop = fm6_fb_op(alg), hotset = 0;
     uint32_t hot = ui.hot_t ? (uint32_t)cur_page()->id[ui.hot_col & 3u] : 0u;
     const uint8_t *pt = fm6_patch[(t - trk) % NTRK];
@@ -1514,6 +1742,9 @@ static const uint16_t FM_MOD[8] = {0x0842, 0x00C2, 0x004A, 0x0806, 0x0802, 0x088
  * (an operator's ratio or level, IDX, FB): ACCENT. Junction dots where routes split or merge. */
 static void graph_fm(const track_t *t, uint16_t c)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_fm_network(c);return;}
+#endif
     uint32_t alg = (uint32_t)t->p[P_E0] & 7u, k, j, mods = FM_MOD[alg], car = 0, hop = 9;
     uint32_t hot = ui.hot_t ? (uint32_t)cur_page()->id[ui.hot_col & 3u] : 0u;
     int32_t x[4], y[4], lo = 7, hi = 0, top = 0, bus, cl = 240, cr = 0, idx = t->p[P_E4];
@@ -1651,15 +1882,29 @@ static void graph_title(void)
  * QUARK's beam); HOME tapped: the scope, as before */
 static void graph_names(void)
 {
-    uint32_t k;
+    uint32_t k, shown = NTRK, first = 0u, selected = song.sel;
+    int remote = 0;
+#if FELUCCA_CAFA
+    remote = cafa_native_profile_view != 0;
+    if (remote) {
+        shown = cafa_nv_track_lanes();
+        first = cafa_native_u14(cafa_native_profile_view + 26u);
+        selected = cafa_native_u14(cafa_native_profile_view + 24u);
+    }
+#endif
     int32_t rh = ((int32_t)graph_h() - 8) / 3;
-    char name[20], d[2] = {0, 0};
+    char name[20], d[6];
     cv_rect(0, 0, 240, (int32_t)graph_h(), T_BG);
-    for (k = 0; k < NTRK; k++) {
-        const track_t *t = &trk[k];
-        int sel = k == song.sel, ib = sel && !ux.quark;
+    for (k = 0; k < shown; k++) {
+        const track_t *t = remote ? 0 : &trk[k];
+        const uint8_t *r = 0;
+        uint32_t track = first + k;
+#if FELUCCA_CAFA
+        if (remote) r = cafa_nv_row(k);
+#endif
+        int sel = track == selected, ib = sel && !ux.quark;
         int32_t x = 3 + (int32_t)(k / 3u) * 118, y = 2 + (int32_t)(k % 3u) * (rh + 2);
-        uint16_t col = t->p[P_MUTE] ? T_DIM : T_TRK(k), lane = sel ? (ux.quark ? ux_mix(col, T_BG, 80) : col) :
+        uint16_t col = (remote ? r && (r[40] & 4u) : t->p[P_MUTE]) ? T_DIM : T_TRK(track), lane = sel ? (ux.quark ? ux_mix(col, T_BG, 80) : col) :
                                                                 ux.quark ? T_BG : T_SURF;
         if (ux.crypt && !sel)
             cr_stone(x, y, 116, rh, lane);
@@ -1672,10 +1917,15 @@ static void graph_names(void)
             cv_rect(x, y, 116, 1, col);
             cv_rect(x, y + rh - 1, 116, 1, col);
         }
-        d[0] = (char)('1' + k);
+        fmt_int(d, (int32_t)track + 1);
+        int32_t name_x = track < 9u ? 22 : 10 + text_w(&AF_M, d);
         cv_text_on(x + 6, y + CAP_IN(M, rh), &AF_M, d, ib ? T_INK : col, lane);
-        sound_name(t, name);
-        cv_free_text(x + 22, y + CAP_IN(M, rh), &AF_M, name[0] ? name : "--", ib ? T_INK : T_TEXT, lane, 116 - 26);
+        if (remote) {
+#if FELUCCA_CAFA
+            if (r) cafa_native_text(name, r, 16u); else name[0] = 0;
+#endif
+        } else sound_name(t, name);
+        cv_free_text(x + name_x, y + CAP_IN(M, rh), &AF_M, name[0] ? name : "--", ib ? T_INK : T_TEXT, lane, 112 - name_x);
     }
 }
 
@@ -1842,6 +2092,23 @@ static void list_row(int32_t y, int sel, const char *tag, uint16_t tc, const cha
         GFX_HOOK_ALIGN(0, y, 0, y + 16, AL_V, "list row text centred up/down");
     cv_free_text(54, y + CAP_IN(S, 16), &AF_S, name, sel ? T_INK : nc, bg, x1 - 54);
 }
+#if FELUCCA_CAFA
+static void cafa_nv_browser_rows(uint32_t selected,uint32_t first)
+{
+    uint32_t k;
+    (void)selected; (void)first;
+    for(k=0;k<7u;k++) {
+        const uint8_t *r=cafa_nv_row(k);char tag[9],name[17],value[17];
+        int sel;
+        if(!r)continue;
+        sel=(r[40]&1u)!=0u;
+        cafa_native_text(tag,r+32,8);cafa_native_text(name,r,16);cafa_native_text(value,r+16,16);
+        list_row(LIST_Y(k),sel,tag,T_DIM,name,(r[40]&16u)?T_DIM:T_TEXT,value[0]?190:232);
+        if(value[0])cv_text_r(228,LIST_Y(k)+CAP_IN(S,16),&AF_S,value,sel?T_INK:T_MID,sel?T_THEME:T_SURF);
+        if(r[40]&2u)cv_icon_in(214,LIST_Y(k),0,16,12,ICON_X_STAR,sel?T_INK:T_ACCENT,sel?T_THEME:T_SURF);
+    }
+}
+#endif
 /* an empty list: a title and a hint, centred */
 static void note_line(int32_t y, const char *s, uint16_t fg)   /* centred S; "[K2] ADD PATTERN": a key hint */
 {
@@ -1890,6 +2157,10 @@ static void panel_alert(uint32_t id, const char *a)
  * favourites starred (the accent), the selected row's suggested pattern at its right */
 static void graph_browse(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_browser_rows(cafa_native_u14(cafa_native_profile_view+24),
+                                                     cafa_native_u14(cafa_native_profile_view+26));return;}
+#endif
     uint32_t total, cur = preset_pos(&total), e, k;
     int32_t row;
     if (!total) {
@@ -1944,6 +2215,10 @@ static void engine_sound_row(int32_t y)
 /* user preset slots around the selected one: "U07  NAME" / EMPTY */
 static void graph_user(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){cafa_nv_browser_rows(cafa_native_u14(cafa_native_profile_view+24),
+                                                     cafa_native_u14(cafa_native_profile_view+26));return;}
+#endif
     int32_t row, first = clamp((int32_t)ui.uslot - 3, 0, UP_SLOTS - 7);
     for (row = 0; row < 7; row++) {
         uint32_t k = (uint32_t)(first + row);
@@ -1968,6 +2243,25 @@ static void graph_bank(void)
     int32_t th = 15, py = 17;
     uint16_t tile = T_SURF;
     uint32_t id, n;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t selected=cafa_native_u14(cafa_native_profile_view+24);
+        cv_rect(0,0,240,(int32_t)cv_h,T_BG);cv_bg=T_BG;
+        for(id=0;id<64u;id++) {
+            const uint8_t *cell=cafa_nv_cell(id);uint32_t flags=cell?cell[2]:0u;
+            int32_t x=1+30*(int32_t)(id%8u),y=2+py*(int32_t)(id/8u);
+            char s[5];uint16_t fill=id==selected?T_TEXT:tile;
+            if(!(flags&1u)){cv_rect(x+13,y+th/2,2,2,T_DIM);if(id==selected)cv_frame(x,y,PV_W,th,T_TEXT);continue;}
+            if(ux.neon && id==selected)ne_vgrad(x,y,PV_W,th,NE_HOT,3);
+            else cv_rrect(x,y,PV_W,th,0,fill,T_BG);
+            uint32_t refs=cafa_native_u14(cell);
+            if(!refs)cv_frame(x,y,PV_W,th,id==selected?T_TEXT:T_DIM);
+            cafa_native_text(s,cell+3,4);
+            cv_text_in(x,y+CAP_IN(S,th),PV_W,&AF_S,s,id==selected?T_INK:refs?T_TEXT:T_MID,fill);
+        }
+        return;
+    }
+#endif
     cv_rect(0, 0, 240, (int32_t)cv_h, T_BG);         /* (over the panel: the tiles are on the ground) */
     cv_bg = T_BG;
     for (id = 0; id < NPAT; id++) {
@@ -2012,6 +2306,73 @@ static void graph_bank(void)
 #define SG_H (SG_SIX ? 20 : 24)
 static void graph_song(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t k,p,count=cafa_native_u14(cafa_native_profile_view+15),selected=cafa_native_u14(cafa_native_profile_view+13);
+        const uint8_t *rows=cafa_nv_section(CAFA_NATIVE_ROWS,0);
+        if(rows)count=cafa_nv_track_lanes();
+        else if(count>CAFA_TRACK_LANES)count=CAFA_TRACK_LANES;
+        cv_rect(0,0,240,(int32_t)cv_h,T_BG);cv_bg=T_BG;
+        for(k=0;k<count;k++) {
+            const uint8_t *row=rows?cafa_nv_row(k):0;
+            uint32_t track=row?cafa_native_u14(row+41):k,sel=track==selected;
+            uint32_t copy_at=row && sel?cafa_native_u14(row+43):0u;
+            uint32_t copy_count=row && sel?cafa_native_u14(row+45):0u;
+            uint32_t chains=0u,starts=0u;
+            int32_t y=SG_Y(k),ty=y+2;uint16_t col=T_TRK(track),g=sel?col:T_BG;
+            uint16_t band[2]={col,ux_mix(col,NE_VIOLET,70)},chain_ground=ux_mix(T_BG,col,35);
+            char number[6];
+            if(copy_at>=NENT || copy_count>NENT-copy_at)copy_count=0u;
+            if(sel) {
+                if(ux.neon)ne_hgrad(0,y,SG_BAND_W,SG_H,band,2);
+                else cv_rect(0,y,SG_BAND_W,SG_H,col);
+            }
+            fmt_int(number,(int32_t)track+1);
+            if(track<9u)cv_text_on(5,y+CAP_IN(M,SG_H),&AF_M,number,sel?T_INK:col,g);
+            else cv_text_fit(3,y+CAP_IN(S,SG_H),&AF_S,number,sel?T_INK:col,g,SG_X(0)-4);
+            for(p=0;p<NENT;p++) {
+                const uint8_t *cell=cafa_nv_cell(k*NENT+p);
+                if(cell && (cell[2]&32u)) {
+                    chains|=1u<<p;
+                    if(cell[2]&64u)starts|=1u<<p;
+                }
+            }
+            for(p=0;p<NENT;p++)if(chains&(1u<<p)) {
+                int32_t left=!(starts&(1u<<p))?-1:p && (chains&(1u<<(p-1u)))?2:-2;
+                int32_t right=(chains&(2u<<p))?(starts&(2u<<p))?10:13:14;
+                cv_rect(SG_X(p)+left,y,right-left+1,SG_H,chain_ground);
+            }
+            for(p=0;p<NENT;p++) {
+                const uint8_t *cell=cafa_nv_cell(k*NENT+p);uint32_t flags=cell?cell[2]:0u;
+                int32_t x=SG_X(p);char value[5];
+                int preview=p>=copy_at && p<copy_at+copy_count && (flags&1u);
+                int chain=flags&32u;
+                uint16_t ground=chain?chain_ground:g, mark=sel && !chain?T_INK:col;
+                unsigned repeats=cell?cafa_native_u14(cell):0u;
+                if(cell)cafa_native_text(value,cell+3,4);else value[0]=0;
+                int rest=str_eq(value,"-") || str_eq(value,"REST");
+                if(flags&1u) {
+                    uint16_t fill=flags&2u?T_TEXT:flags&4u?mark:sel?ux_mix(col,T_INK,35):T_SURF;
+                    uint16_t ink=flags&2u?T_INK:flags&4u?(mark==col?T_INK:col):sel?T_INK:T_MID;
+                    cv_rrect(x,ty,SG_W,SG_TH,preview?0:2,fill,ground);
+                    if(rest)cv_rect(x+3,ty+SG_TH/2-1,SG_W-6,2,ink);
+                    else cv_text_in(x,ty+CAP_IN(S,SG_TH),SG_W,&AF_S,value,ink,fill);
+                    if(flags&8u)for(uint32_t corner=0;corner<4u;corner++)
+                        cv_rect(x+9+(int32_t)corner,ty,1,(int32_t)corner+1,
+                                preview && ux.neon && !chain?
+                                ne_ramp(band,2,(x+9+(int32_t)corner)*1000/(SG_BAND_W-1)):ground);
+                } else if(rest)cv_rect(x+3,ty+SG_TH/2-1,SG_W-6,2,flags&4u?mark:T_DIM);
+                else cv_rect(x+5,ty+SG_TH/2,2,2,sel?T_INK:T_DIM);
+                if(preview || (flags&16u))cv_frame(x-1,ty-1,SG_W+2,SG_TH+2,preview?T_TEXT:mark);
+                if((flags&2u) && !(flags&1u))cv_frame(x,ty,SG_W,SG_TH,T_TEXT);
+                if((flags&1u) || rest)
+                    for(unsigned tick=0;tick+1u<repeats && tick<3u;tick++)
+                        cv_rect(x+1+3*(int32_t)tick,ty+SG_TH+1,2,1,mark);
+            }
+        }
+        return;
+    }
+#endif
     uint16_t g0 = T_BG;
     uint32_t k, p, r, pos;
     cv_rect(0, 0, 240, (int32_t)cv_h, T_BG);         /* (over the panel, as HOME: the rows are on the ground) */
@@ -2121,6 +2482,24 @@ static void graph_song(void)
  * U3, R5) The first row is the page's own: PLAY ON / OFF and how many records */
 static void graph_events(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t k,selected=cafa_native_u14(cafa_native_profile_view+24),first=cafa_native_u14(cafa_native_profile_view+26);
+        for(k=0;k<7u;k++) {
+            const uint8_t *r=cafa_nv_row(k);char kind[9],step[9],name[17],value[17];
+            int32_t y=LIST_Y(k);int sel=first+k==selected;uint16_t bg=sel?T_THEME:T_SURF;
+            if(!r)continue;
+            cafa_native_text(kind,r+32,8);cafa_native_text(step,r,8);
+            cafa_native_text(name,r+8,8);cafa_native_text(value,r+16,16);
+            if(sel)list_bar(y);
+            cv_text_on(14,y+CAP_IN(S,16),&AF_S,kind,sel?T_INK:(r[40]&64u)?T_ACCENT:T_MID,bg);
+            cv_text_on(54,y+CAP_IN(S,16),&AF_S,step,sel?T_INK:T_MID,bg);
+            cv_free_text(80,y+CAP_IN(S,16),&AF_S,name,sel?T_INK:T_TEXT,bg,100);
+            cv_text_r(226,y+CAP_IN(S,16),&AF_S,value,sel?T_INK:T_THEME,bg);
+        }
+        return;
+    }
+#endif
     const track_t *t = TSEL;
     uint8_t idx[MOTION_MAX];
     uint32_t n = ev_rows(idx), k;
@@ -2181,6 +2560,18 @@ static void graph_events(void)
 /* project slots: the name (none: USED) / EMPTY, the selected one filled */
 static void graph_slots(void)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t i,selected=cafa_native_u14(cafa_native_profile_view+24);
+        for(i=0;i<4u;i++) {
+            const uint8_t *r=cafa_nv_row(i);char tag[9],name[17];
+            if(!r)continue;
+            cafa_native_text(tag,r+32,8);cafa_native_text(name,r,16);
+            list_row(12+(int32_t)i*26,i==selected,tag,T_MID,name,(r[40]&16u)?T_DIM:T_TEXT,232);
+        }
+        return;
+    }
+#endif
     uint32_t i;
     for (i = 0; i < 4u; i++) {
         int32_t y = 12 + (int32_t)i * 26;
@@ -2319,14 +2710,39 @@ static void track_strip(uint32_t c, uint32_t pos, uint32_t sel, uint32_t st, uin
 #define MS_X(c) (4 + 39 * (int32_t)(c))
 #define MS_FY0 52                                    /* the fader: y 52 .. 101 */
 #define MS_FY1 102
-static void mix_strip(uint32_t c, uint32_t sel, uint32_t st, uint32_t mute, uint32_t hot, uint32_t lvl, int32_t pan,
+#if FELUCCA_CAFA
+static uint32_t cafa_mix_level(const uint8_t *r)
+{
+    return (cafa_native_u14(r+41u)*127u+8191u)/16383u;
+}
+static int32_t cafa_mix_pan(const uint8_t *r)
+{
+    return (int32_t)((cafa_native_u14(r+43u)*127u+8191u)/16383u)-64;
+}
+static int32_t cafa_mix_meter(const uint8_t *cell)
+{
+    return cell ? (int32_t)((cafa_native_u14(cell)*(TS_MH-2)+8191u)/16383u) : 0;
+}
+static uint32_t cafa_mix_status(const uint8_t *r, const uint8_t *cell)
+{
+    return cell && (cell[2]&4u) ? 1u : cell && (cell[2]&1u) ? 2u : r[40]&4u ? 3u : 0u;
+}
+#endif
+static void mix_strip(uint32_t c, uint32_t track, uint32_t sel, uint32_t st, uint32_t mute, uint32_t hot, uint32_t lvl, int32_t pan,
                       const char *b, int large)
 {
     int ib = sel && !ux.quark;                       /* (the selected strip a band, INK on it; (Skiff Q3) QUARK: a tint) */
-    uint16_t col = T_TRK(c), g = sel ? (ux.quark ? ux_mix(col, T_BG, 82) : col) : T_SURF, line = ib ? ux_mix(col, T_INK, 55) : T_RAISE;
+    uint16_t col = T_TRK(track), g = sel ? (ux.quark ? ux_mix(col, T_BG, 82) : col) : T_SURF, line = ib ? ux_mix(col, T_INK, 55) : T_RAISE;
     uint16_t vc = ib ? T_INK : hot == 1u ? T_ACCENT : mute ? T_DIM : T_THEME, nc = ib ? T_INK : mute ? T_DIM : col;
-    int32_t h = (int32_t)graph_h(), m = ts.meter[c], i;
-    char d[2] = {(char)('1' + c), 0}, nm[8], v[8];
+    int32_t h = (int32_t)graph_h(), m = 0, i;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        m=cafa_mix_meter(cafa_nv_cell(c));
+    } else
+#endif
+    m=ts.meter[c];
+    char d[6], nm[8], v[8];
+    fmt_int(d,(int32_t)track+1);
     cv_begin(MS_W, (uint32_t)h, T_BG);
     if (ux.crypt && !sel)                            /* (Skiff C3) CRYPT: the strips stone */
         cr_stone(0, 0, MS_W, h, g);
@@ -2342,7 +2758,10 @@ static void mix_strip(uint32_t c, uint32_t sel, uint32_t st, uint32_t mute, uint
     } else
         cv_rect(0, 0, MS_W, h, g);
     GFX_HOOK_ALIGN(0, 3, 0, 27, AL_V, "mixer strip number on its line");
-    cv_text_on(4, 3 + CAP_IN(V, 24), &AF_V, d, nc, g);
+    if (track < 9u)
+        cv_text_on(4, 3 + CAP_IN(V, 24), &AF_V, d, nc, g);
+    else
+        cv_text_fit(4, 3 + CAP_IN(M, 24), &AF_M, d, nc, g, MS_W - 15);
     if (st == 1u)                                    /* REC (recording) / armed, stopped / muted */
         cv_rect(MS_W - 11, 10, 7, 7, ib ? T_INK : T_REC);
     else if (st == 2u)
@@ -2383,7 +2802,7 @@ static void mix_strip(uint32_t c, uint32_t sel, uint32_t st, uint32_t mute, uint
                 cv_rect(27, MS_FY1 - mh, 2, mh, T_THEME);
         } else if (ux.neon && mute) {                        /* (Skiff N3) NEON: muted, no signal (selected: dark snow on its
                                                        * band) */
-            ne_snow(3, MS_FY0, MS_W - 6, MS_FY1 - MS_FY0, c * 7u + 3u, sel ? col : T_BG, ib ? T_INK : T_MID);
+            ne_snow(3, MS_FY0, MS_W - 6, MS_FY1 - MS_FY0, track * 7u + 3u, sel ? col : T_BG, ib ? T_INK : T_MID);
             GFX_HOOK_ALIGN(0, 0, MS_W, 0, AL_H, "mixer strip value centred across");
             cv_text_in(0, MS_FY0 + 22, MS_W, &AF_S, "MUTE", ib ? T_INK : T_THEME, g);
         } else if (ux.neon) {                         /* (Skiff N3) NEON: VU columns, LEVEL (its cap white; turned: the
@@ -2423,7 +2842,24 @@ static void mix_strip(uint32_t c, uint32_t sel, uint32_t st, uint32_t mute, uint
 }
 static void draw_tracks(void)
 {
-    uint32_t c, pos, sk = strip_kind() == SK_TRK;
+    uint32_t c, pos, sk;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        uint32_t first=cafa_native_u14(cafa_native_profile_view+26),selected=cafa_native_u14(cafa_native_profile_view+24);
+        uint32_t count=cafa_nv_track_lanes();
+        lcd_fill(0,graph_y(),240,graph_h(),T_BG);
+        for(c=0;c<count;c++) {
+            const uint8_t *r=cafa_nv_row(c);char name[17];
+            uint32_t flags=r?r[40]:0u,lvl=r?cafa_mix_level(r):0u;
+            int32_t pan=r?cafa_mix_pan(r):0;
+            if(r)cafa_native_text(name,r,16);else name[0]=0;
+            mix_strip(c,first+c,first+c==selected,r?cafa_mix_status(r,cafa_nv_cell(c)):0u,
+                      flags&4u,0u,lvl,pan,name,large_kind()==LK_TALL);
+        }
+        return;
+    }
+#endif
+    sk=strip_kind()==SK_TRK;
     if (ui.force) {
         if (NTRK > 4u)                               /* the six strips are the panel's full height: only the gaps */
             for (c = 0, pos = 0; c <= NTRK; c++) {   /* between them, so a track change doesn't flash them (#15) */
@@ -2461,7 +2897,7 @@ static void draw_tracks(void)
             continue;
         ts.col[pos] = sig;
         if (NTRK > 4u) {                             /* ((Skiff U3, N1) six strips) */
-            mix_strip(c, sel, st, mute, hot, lvl, pan, b, (int)sk);
+            mix_strip(c, c, sel, st, mute, hot, lvl, pan, b, (int)sk);
             continue;
         }
         if (sk) {
@@ -2546,6 +2982,13 @@ static void scope_levels(void)
     int32_t fall = (int32_t)(now - scd.last > 500u ? 500u : now - scd.last) * 2;   /* (all the way down in 0.5 s) */
     scd.last = now;
     for (k = 0; k < NTRK; k++) {
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *r=cafa_nv_row(k);
+            scd.lv[k]=r?(int16_t)(cafa_native_u14(r+41)*1000u/16383u):0;
+            continue;
+        }
+#endif
         track_t *t = &trk[k];
         int32_t lv = t->p[P_MUTE] ? 0 : meter_px(t->peak) * 1000 / (TS_MH - 2);
         t->peak = 0;                                 /* (a max-hold, as the MIXER reads it) */
@@ -2561,7 +3004,10 @@ static void scope_levels(void)
 static void qk_detector(int32_t cx, int32_t cy)
 {
     int32_t R = cy - 3, k, j;
-    uint32_t now = fm1_ms, newest = 1000u;
+    uint32_t now = fm1_ms, newest = 1000u, first = 0u;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)first=cafa_native_u14(cafa_native_profile_view+26u);
+#endif
     qk_disc(cx, cy, R * 58 / 100, ux_mix(T_THEME, T_SURF, 93));   /* (the glow round the beam) */
     qk_ellipse(cx, cy, R * 19 / 100, R * 19 / 100, 0, ux_mix(T_THEME, T_SURF, 78), 24);
     qk_dotring(cx, cy, R * 37 / 100, 40, ux_mix(T_THEME, T_SURF, 66));
@@ -2572,8 +3018,25 @@ static void qk_detector(int32_t cx, int32_t cy)
         int32_t lv = scd.lv[k % NTRK], r0 = R * 78 / 100, h = 1 + lv * (R * 22 / 100) * (600 + (int32_t)r * 400 / 255) / 1000000;
         int32_t co = QK_COS(ph), si = QK_SIN(ph);
         cv_line_t(cx + r0 * co / 32767, cy + r0 * si / 32767, cx + (r0 + h) * co / 32767, cy + (r0 + h) * si / 32767,
-                  ux_mix(T_TRK(k % NTRK), T_SURF, 65 - lv * 65 / 1000), 2);
+                  ux_mix(T_TRK(first + k % NTRK), T_SURF, 65 - lv * 65 / 1000), 2);
     }
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        for(k=0;k<(int32_t)cafa_nv_track_lanes();k++){const uint8_t *r=cafa_nv_row(k);
+            if(r && (r[40]&2u)){
+                uint32_t track=first+(uint32_t)k;
+                uint32_t pitch=cafa_native_u14(r+43),seed=(pitch*2654435761u)^(track*0x9E3779B9u);
+                uint32_t part;newest=0u;
+                for(part=0;part<3u;part++) {
+                    uint32_t dir=(seed+part*0x55555555u)*2654435761u;
+                    int32_t reach=R*(34+(int32_t)(pitch+part*13u)%46)/100;
+                    uint32_t point=qk_track(cx,cy,dir,R/2,reach,part&1u?1:-1,T_TRK(track),T_SURF,reach);
+                    cv_rect((int16_t)(point>>16),(int16_t)point-1,2,2,T_TRK(track));
+                }
+            }}
+        goto qk_vertex;
+    }
+#endif
     for (k = 0; k < NTRK; k++)
         for (j = 0; j < (int32_t)NVOICE; j++) {      /* a sounding voice an event (UNISON's, MONO's: its first) */
             const track_t *t = &trk[k];
@@ -2612,6 +3075,7 @@ static void qk_detector(int32_t cx, int32_t cy)
                     cv_rect((int16_t)(e >> 16), (int16_t)e - 1, 2, 2, col);   /* (the particle) */
             }
         }
+qk_vertex:
     qk_disc(cx, cy, newest < 150u ? 4 : 3, ux_mix(T_ACCENT, T_SURF, 60));
     qk_disc(cx, cy, newest < 150u ? 3 : 2, T_ACCENT);
 }
@@ -2622,14 +3086,24 @@ static void cr_creatures(void)
 {
     static const uint8_t *const ART[NTRK] = {SPR_CR_SKULL, SPR_CR_GHOST, SPR_CR_CANDLE, SPR_CR_WITCH, SPR_CR_MONK,
                                              SPR_CR_DEMON};
-    uint32_t k;
-    for (k = 0; k < NTRK; k++) {
-        int32_t x = 9 + (int32_t)k * 37, muted = trk[k].p[P_MUTE] != 0;
-        char d[2] = {(char)('1' + k), 0};
-        cr_creature(x, (int32_t)cv_h - 22 - ART[k][1] * 6, ART[k], scd.lv[k], T_TRK(k), muted,
-                    (ui.frame / 2u + k) * 2654435761u);
+    uint32_t k, count = NTRK, first = 0u;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view){count=cafa_nv_track_lanes();first=cafa_native_u14(cafa_native_profile_view+26u);}
+#endif
+    for (k = 0; k < count; k++) {
+        int32_t x = 9 + (int32_t)k * 37, muted;
+        uint32_t track = first + k;
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view){const uint8_t *r=cafa_nv_row(k);muted=r && (r[40]&4u);}
+        else
+#endif
+        muted=trk[k].p[P_MUTE]!=0;
+        char d[6];
+        fmt_int(d, (int32_t)track + 1);
+        cr_creature(x, (int32_t)cv_h - 22 - ART[k][1] * 6, ART[k], scd.lv[k], T_TRK(track), muted,
+                    (ui.frame / 2u + track) * 2654435761u);
         GFX_HOOK_ALIGN(x, (int32_t)cv_h - 19, x + 35, (int32_t)cv_h - 7, AL_HV, "scope creature's number under it");
-        cv_text_in(x, (int32_t)cv_h - 19 + CAP_IN(S, 12), 35, &AF_S, d, muted ? T_DIM : T_TRK(k), T_SURF);
+        cv_text_in(x, (int32_t)cv_h - 19 + CAP_IN(S, 12), 35, &AF_S, d, muted ? T_DIM : T_TRK(track), T_SURF);
     }
 }
 
@@ -2639,17 +3113,21 @@ static void cr_creatures(void)
 #define SEA_N 18                                      /* columns (three a track), every SEA_P px, a cell SEA_P - 2 */
 #define SEA_P 12
 #define SEA_Z 3                                       /* the boat's pixel */
-static void sk_sea(void)
+static void scope_sea(void)
 {
     static const uint16_t BOAT[4] = {0x0001, 0x7FFE, 0x3FFC, 0x1FF8};   /* (the logo's: 15 x 4, the bow at the right) */
     int32_t x0 = 120 - SEA_N * SEA_P / 2 + 1, foot = (int32_t)cv_h - 8, rows = 8, i, r, hb = 1;
     int32_t bx = x0 - 15 * SEA_Z + (int32_t)(fm1_ms / 24u % (uint32_t)(SEA_N * SEA_P + 15 * SEA_Z));   /* (its stern) */
     uint32_t ph = fm1_ms * 2863311u;                 /* (the swell: 8 columns a wave, one wave on every 1.5 s) */
+    uint32_t first = 0u;
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)first=cafa_native_u14(cafa_native_profile_view+26u);
+#endif
     uint16_t grey = ux_mix(T_SURF, T_TEXT, 30), off = ux_mix(T_SURF, T_TEXT, 8);
     for (i = 0; i < SEA_N; i++) {
         uint32_t k = (uint32_t)i / 3u, n = k + (uint32_t)i % 3u - 1u;   /* (the band beside, on the column's side) */
         int32_t lv = scd.lv[k], x = x0 + i * SEA_P, h;
-        uint16_t on = lv > 30 ? T_TRK(k) : grey;
+        uint16_t on = lv > 30 ? T_TRK(first + k) : grey;
         lv = (2 * lv + scd.lv[n < NTRK ? n : k]) / 3;   /* (between the bands' middles: a third of the way and two) */
         h = 1 + (lv * rows * (32767 + QK_SIN(ph - (uint32_t)i * 0x20000000u)) >> 26);   /* (~ / 1000 / 65534) */
         for (r = 0; r < rows; r++) {                 /* (a cell its corners cut, as the logo's rounded ones) */
@@ -2669,72 +3147,7 @@ static void sk_sea(void)
 
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px (in silence
  * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours) */
-static void graph_scope(uint16_t c)
-{
-    static int16_t snap[SCOPE_N];
-    uint32_t w = scope_w, i, trig = 0;
-    int32_t cy = (int32_t)cv_h / 2, py = cy, x, peak = 1500, a = cv_h >= H_GRAPH ? 46 : cy - 6;   /* (LARGE: the strip) */
-    if (cv_h >= H_GRAPH && (ux.quark || ux.crypt || ux.skiff)) {   /* (2.5) the tracks' levels: their themes' own */
-        scope_levels();
-        if (ux.quark)
-            qk_detector(120, cy);
-        else if (ux.crypt)
-            cr_creatures();
-        else
-            sk_sea();
-        return;
-    }
-    for (i = 0; i < SCOPE_N; i++) {
-        snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
-        if (snap[i] > peak)
-            peak = snap[i];
-        else if (-snap[i] > peak)
-            peak = -snap[i];
-    }
-    for (i = 1; i < SCOPE_N - 240u; i++)
-        if (snap[i - 1] < 0 && snap[i] >= 0) {
-            trig = i;
-            break;
-        }
-    if (ux.crypt) {                                  /* (Skiff N8) CRYPT, MENU > LARGE's strip: the sound burns: fire up
-                                                      * from the foot as tall as the wave there (ember, amber, gold, its
-                                                      * tips flame), flickering */
-        int32_t foot = (int32_t)cv_h - 3, top = 6, k;
-        for (x = 0; x < PANEL_W; x += 2) {
-            int32_t s = snap[trig + (uint32_t)x], v = (s < 0 ? -s : s) * (foot - top) / peak;
-            v += (int32_t)((((uint32_t)x * 7u + ui.frame * 13u) >> 1) % 5u) - 2;   /* (the flicker) */
-            if (v < 2)
-                v = 2;
-            for (k = 0; k < 4; k++) {                /* its four bands, the foot's first */
-                int32_t y0 = foot - v * (k + 1) / 4, y1 = foot - v * k / 4;
-                cv_rect(PANEL_X0 + x, y0, 2, y1 - y0, k == 0 ? CR_EMBER : k == 1 ? T_THEME : k == 2 ? CR_GOLD : CR_FLAME);
-            }
-        }
-        return;
-    }
-    if (ux.neon && cv_h >= H_GRAPH) {                /* (Skiff N8) NEON: the sound as the skyline: the wave a ridge of
-                                                      * vector mountains over the horizon, the striped sun behind it
-                                                      * swelling with how loud it is, the floor running toward the viewer */
-        int32_t hy = (int32_t)cv_h * 64 / 100, my = hy / 2 + 2, ma = hy / 2 - 6;
-        ne_sun(120, hy, 14 + (peak > 24000 ? 24000 : peak) * 22 / 24000, 30);
-        ne_grid_run(PANEL_X0, PANEL_X0 + PANEL_W, hy, (int32_t)cv_h - 2, T_THEME, T_SURF, (int32_t)(ui.frame * 125u % 1000u));
-        cv_rect(PANEL_X0, hy, PANEL_W, 1, ux_mix(T_THEME, T_SURF, 30));
-        for (x = 0; x < PANEL_W; x += 4) {
-            int32_t y = my - snap[trig + (uint32_t)x] * ma / peak + 3;
-            if (y < hy)
-                cv_rect(PANEL_X0 + x, y, 1, hy - y, ux_mix(NE_VIOLET, T_SURF, 45));
-        }
-        cy = my;
-        a = ma;
-    } else
-    cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
-    for (x = 0; x < PANEL_W; x++) {
-        int32_t y = cy - snap[trig + (uint32_t)x] * a / peak;    /* auto-scaled */
-        if (x)
-            cv_line_t(PANEL_X0 - 1 + x, py, PANEL_X0 + x, y, c, 2);
-        py = y;
-    }
-}
+#include "ui_native_curves.c"
 
 #include "ui_pgraph.c"                               /* (Skiff U5, V1) the pages' own graphs */
 
@@ -2946,3 +3359,191 @@ static void draw_graph(void)
         take_box_draw();
     cv_blit(0, graph_y());
 }
+
+/* Published companion sections feed the same canvas, palettes and Skiff panel
+ * geometry as the standalone graph painters above.  No local sequencer data is
+ * consulted while cafa_native_profile_view is set. */
+#if FELUCCA_CAFA
+static uint32_t cafa_nv_count(uint8_t tag,const uint8_t **body,uint32_t *bytes)
+{
+    const uint8_t *p=cafa_nv_section(tag,bytes);
+    if(!p) { *body=0;return 0; }
+    *body=p+(tag==1u || tag==4u || tag==7u ? 1u : 2u);
+    return tag==1u || tag==4u || tag==7u ? p[0] : cafa_native_u14(p);
+}
+static void cafa_nv_curve(uint16_t col,uint32_t screen)
+{
+    const uint8_t *p,*m;uint32_t n,b,k,mb,mn;
+    int32_t x0=12,x1=228,top=7,bot=graph_h()-10,px=0,py=0;
+    n=cafa_nv_count(3,&p,&b);
+    if(screen==0u || screen==1u || (screen>=24u && screen<=27u)) {
+        cv_rect(x0,top,x1-x0,1,T_LINE);
+        cv_rect(x0,(top+bot)/2,x1-x0,1,T_LINE);
+        cv_rect(x0,bot,x1-x0,1,T_LINE);
+    } else if(screen==2u || screen==3u) cv_rect(x0,(top+bot)/2,x1-x0,1,T_RAISE);
+    else {cv_rect(x0,bot,x1-x0,1,T_LINE);cv_rect(x0,top,1,bot-top,T_LINE);}
+    for(k=0;k<n;k++) {
+        int32_t x=x0+(int32_t)cafa_native_u14(p+4u*k)*(x1-x0)/16383;
+        int32_t y=bot-(int32_t)cafa_native_u14(p+4u*k+2u)*(bot-top)/16383;
+        if(k)cv_line_t(px,py,x,y,col,2);
+        else if(ux.quark)qk_disc(x,y,2,col);
+        px=x;py=y;
+    }
+    mn=cafa_nv_count(4,&m,&mb);
+    for(k=0;k<mn;k++) {
+        int32_t x=x0+(int32_t)cafa_native_u14(m+13u*k)*(x1-x0)/16383;
+        int32_t y=bot-(int32_t)cafa_native_u14(m+13u*k+2u)*(bot-top)/16383;
+        uint16_t c=(m[13u*k+4u]&1u)?T_ACCENT:col;
+        if(ux.quark)qk_nucleus(x,y,c,7);
+        else if(ux.neon)ne_spark(x,y,c,1);
+        else cv_rect(x-2,y-2,5,5,c);
+    }
+    if(!n)cv_text_in(8,graph_h()/2-5,224,&AF_S,"NO CURVE",T_DIM,T_SURF);
+}
+
+static void cafa_nv_notes(uint16_t col)
+{
+    const uint8_t *p;uint32_t n,b,k,first=cafa_native_u14(cafa_native_profile_view+17);
+    uint32_t cursor=cafa_native_u14(cafa_native_profile_view+20),play=cafa_native_u14(cafa_native_profile_view+22);
+    const uint8_t *keyboard;uint32_t kb_len,lo=48u,hi=48u;
+    const uint8_t *roll=cafa_nv_row(0);
+    char format[17];
+    if(roll){cafa_native_text(format,roll,16);if(!str_eq(format,"ROLL VIEW V1"))roll=0;}
+    uint32_t cols=roll?cafa_native_profile_view[19]:16u;
+    uint32_t start=roll?cafa_native_u14(roll+41):cursor;
+    uint32_t end=roll?cafa_native_u14(roll+43):cursor;
+    n=cafa_nv_count(2,&p,&b);
+    if(n) {
+        lo=hi=p[0];
+        for(k=1;k<n;k++){if(p[7u*k]<lo)lo=p[7u*k];if(p[7u*k]>hi)hi=p[7u*k];}
+        if(hi-lo<PR_ROWS){uint32_t pad=(PR_ROWS-(hi-lo))/2u;lo=lo>pad?lo-pad:0u;}
+        if(lo+PR_ROWS>128u)lo=128u-PR_ROWS;
+    }
+    keyboard=cafa_nv_section(6,&kb_len);
+    for(k=0;k<PR_ROWS;k++) {
+        uint32_t pitch=lo+PR_ROWS-1u-k,pc=pitch%12u;
+        int32_t y=PR_Y0+(int32_t)k*PR_RH;char label[8];
+        int in=keyboard && (keyboard[pitch/7u]&(1u<<(pitch%7u)));
+        if(in)cv_rect(PR_X0,y,(int32_t)cols*PR_CW,PR_RH,T_LANE);
+        cv_rect(PR_KX,y,KEY_BLACK[pc]?5:9,PR_RH-1,KEY_BLACK[pc]?T_DIM:T_RAISE);
+        if(pc==0u){
+            int32_t ink[4];
+            cv_rect(PR_X0,y+PR_RH-1,(int32_t)cols*PR_CW,1,T_RAISE);
+            note_name(label,pitch);text_ink(&AF_S,label,ink);
+            cv_text_on(23-ink[2],y-5,&AF_S,label,T_DIM,T_SURF);
+        }
+    }
+    for(k=0;k<=cols;k++)cv_rect(PR_X0+(int32_t)k*PR_CW,PR_Y0,1,PR_ROWS*PR_RH,k%4u?T_GRID:T_RAISE);
+    if(cols && start<=end && start<first+cols && end>=first) {
+        uint32_t left=start<first?0u:start-first,right=end>=first+cols?cols-1u:end-first;
+        int32_t x=PR_X0+(int32_t)left*PR_CW,width=(int32_t)(right-left+1u)*PR_CW+1;
+        if(ux.neon)ne_laser(x,PR_Y0-2,width,PR_ROWS*PR_RH+4,T_SURF);
+        else if(ux.quark)qk_corners(x,PR_Y0-2,width,PR_ROWS*PR_RH+4,T_ACCENT,4);
+        else cv_frame(x,PR_Y0-2,width,PR_ROWS*PR_RH+4,ux.crypt?CR_GOLD:T_TEXT);
+    }
+    if(play>=first && play<first+cols)cv_rect(PR_X0+(int32_t)(play-first)*PR_CW+6,PR_Y0,1,PR_ROWS*PR_RH,
+                                             ux.crypt?CR_GOLD:T_ACCENT);
+    if(roll){
+        char scale[17];cafa_native_text(scale,roll+16,16);
+        cv_text_r(PR_X0+16*PR_CW,PR_Y0+PR_ROWS*PR_RH+2,&AF_S,scale,T_DIM,T_SURF);
+        for(k=0;k<cols;k++){
+            const uint8_t *cell=cafa_nv_cell(k);
+            if(cell && (cell[2]&8u))cv_rect(PR_X0+3+(int32_t)k*PR_CW,PR_Y0+PR_ROWS*PR_RH+3,7,2,T_ACCENT);
+        }
+    }
+    for(k=0;k<n;k++) {
+        uint32_t start=cafa_native_u14(p+7u*k+1u),length=cafa_native_u14(p+7u*k+3u);
+        uint32_t flags=p[7u*k+5u];
+        int32_t x=PR_X0+(int32_t)start*PR_CW/128,y=PR_Y0+((int32_t)(lo+PR_ROWS-1u)-(int32_t)p[7u*k])*PR_RH;
+        int32_t w=(int32_t)length*PR_CW/128;if(w<2)w=2;
+        if(x<PR_X0)x=PR_X0;if(x+w>PR_X0+(int32_t)cols*PR_CW)w=PR_X0+(int32_t)cols*PR_CW-x;
+        if(w>0) {
+            uint16_t ink=(flags&16u)?T_DIM:(flags&1u)?T_ACCENT:(flags&32u)?T_TEXT:col;
+            pr_bar(x,y,w,ink,(flags&32u)!=0u,1u);
+            if(flags&2u)cv_rect(x,y,1,4,T_TEXT);
+            if(flags&4u)cv_rect(x+w-1,y,1,4,T_TEXT);
+            if(flags&8u)cv_rect(x,y+PR_RH,7,2,T_ACCENT);
+        }
+    }
+}
+static void cafa_native_profile_graph(const uint8_t *view,uint32_t len)
+{
+    uint32_t screen=view[6];uint16_t col=T_THEME;
+    (void)len;
+    if(screen==31u){draw_tracks();return;}
+    cv_begin(240,graph_h(),T_BG);
+    if(ux.crypt) {cr_stone(3,0,234,(int32_t)graph_h(),T_SURF);cr_frame2(3,0,234,(int32_t)graph_h(),T_LINE);}
+    else cv_rrect(3,0,234,graph_h(),5,T_SURF,T_BG);
+    if(ux.quark)qk_corners(3,0,234,(int32_t)graph_h(),T_DIM,7);
+    cv_bg=T_SURF;cv_oy=0;
+    switch(screen) {
+    case 0:case 1:case 24:case 25:case 26:case 27:
+        cv_oy=GOY;graph_ht=100+2*graph_pad();graph_adsr(0,col);graph_ht=100;break;
+    case 2:case 3:
+        cv_oy=GOY;graph_ht=100+2*graph_pad();graph_lfo(0,col);graph_ht=100;break;
+    case 11:cv_oy=GOY+graph_pad();graph_duck(0,col);break;
+    case 48:graph_scope(col);break;
+    case 5:graph_fx(0,col);break;
+    case 6:case 32:graph_delay(col);break;
+    case 7:case 33:graph_reverb(col);break;
+    case 8:graph_drive(0,col);break;
+    case 9:graph_insert(0,col);break;
+    case 28:
+#if FELUCCA_FM4
+        graph_fm(0,col);
+#else
+        cafa_nv_fm_network(col);
+#endif
+        break;
+    case 29:graph_voice(0,col);break;
+    case 30:graph_voice2(0,col);break;
+    case 34:graph_chorus(col);break;
+    case 35:graph_global(col);break;
+    case 40:case 41:graph_arp(0,col);break;
+    case 10:graph_slicer(0,col);break;
+    case 43:
+        if(view[7]==CAFA_NATIVE_VARIANT_DRUM && cafa_nv_cell(16))graph_grid(0,col);
+        else graph_tiles(0,col);
+        break;
+    case 44:case 67:graph_steps(0,col);break;
+    case 12:graph_scale(0,col);break;
+    case 13:graph_chord(0,col);break;
+    case 14:graph_follow(0);break;
+    case 19:graph_lanes(0,col);break;
+    case 21:graph_lmix(0,col);break;
+    case 22:
+#if FELUCCA_SLICE
+        graph_slices();
+#else
+        cafa_nv_slices();
+#endif
+        break;
+    case 42:if(view[7]==CAFA_NATIVE_VARIANT_DRUM)graph_grid(0,col);else graph_roll(0,col);break;
+    case 47:if(large_kind()==LK_TALL)graph_names();else graph_tracks();break;
+    case 4:graph_mod(0,col);break;
+    case 36:graph_browse();break;
+    case 37:graph_user();break;
+    case 38:graph_bank();break;
+    case 39:graph_slots();break;
+    case 45:graph_events();break;
+    case 46:graph_song();break;
+    case 15:case 16:
+        if(view[7]==CAFA_NATIVE_VARIANT_NORMAL && cafa_nv_row(8) &&
+           cafa_nv_row(0) && memcmp(cafa_nv_row(0)+32u,"DRAWBARS",8u)==0)graph_wheel(0,col);
+        else if(view[7]==CAFA_NATIVE_VARIANT_SAMPLE_WAVE)graph_sample(col);
+        else if(view[7]==CAFA_NATIVE_VARIANT_FM_OPERATOR)graph_fm6(0,col);
+        else if(view[7]==CAFA_NATIVE_VARIANT_ANALOG) {
+            if(screen==15u)graph_osc(0,col);else graph_flt(0,col);
+        } else if(view[7]==CAFA_NATIVE_VARIANT_DRUM_SOUND)graph_dx(0,col);
+        else if(view[7]==CAFA_NATIVE_VARIANT_DRUM_LANES)graph_lanes(0,col);
+        else graph_scope(col);
+        break;
+    case 17:graph_fm_op(0,col);break;
+    case 18:graph_fm_all(0,col);break;
+    case 20:graph_dx(0,col);break;
+    case 23:graph_sample(col);break;
+    default:break;
+    }
+    cv_oy=0;cafa_native_transient_draw();cv_blit(0,graph_y());
+}
+#endif

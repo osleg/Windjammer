@@ -1,29 +1,5 @@
-# Contributing to Skiff
+# Contributing to Windjammer
 
-Thanks for helping! Skiff is firmware for the M-VAVE FM-1, a fork of
-[Felucca](https://github.com/hugelton/Felucca). Please report Skiff's behaviour here, not in Felucca's Issues.
+Report firmware and controller behavior in this repository. Report Android app behavior in the [LOOM repository](https://github.com/Osleg/loom-groovebox). Include the firmware revision, companion version, and a sequence of steps that reproduces the issue.
 
-| What | Where |
-|---|---|
-| A bug you can reproduce | [Issues](https://github.com/illuminus5/skiff/issues/new/choose): one issue per bug |
-| A feature idea, a question | [Issues](https://github.com/illuminus5/skiff/issues/new): say in the title which it is |
-
-## Reporting a bug
-
-Please include the Skiff version (hold HOME > ABOUT), your computer's OS and browser if the editor or installer
-is involved, the steps to reproduce it, what you expected and what happened. A photo or a short video helps.
-
-## Pull requests
-
-Pull requests are welcome, including AI-assisted ones, with the same bar for all:
-
-- keep it small and focused on one thing;
-- make sure you understand the change and can explain it;
-- follow [DESIGN.md](DESIGN.md): it says how every screen and control behaves; change it first if your change
-  changes a rule;
-- test it on a real FM-1;
-- run `tests/run_tests.sh` (see [BUILDING.md](BUILDING.md)): every host test passes;
-- new files carry the `SPDX-License-Identifier: GPL-3.0-only` header; mark changes to Felucca's files (Skiff);
-- bring in only code whose licence allows it (GPL-3.0-compatible, credited in [LICENSING.md](LICENSING.md)).
-
-By contributing you agree that your contribution is licensed under GPL-3.0-only.
+Run the [controller build and checks](BUILDING.md#build-and-verify) before opening a pull request. Keep protocol changes compatible with existing peers. Document new optional capabilities, their version negotiation, and recovery behavior in [the wire contract](docs/OPEN_PROTOCOL.md). Preserve upstream and third-party notices. Contributions are accepted under GPL-3.0-only.

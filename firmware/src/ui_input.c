@@ -383,6 +383,9 @@ static void smk_leds_out(const uint8_t *nl, const uint8_t *nd, const uint8_t *nb
 #endif
 static void ui_leds(void)
 {
+#if FELUCCA_CONTROLLER
+    cafa_leds();
+#else
 #if FELUCCA_CAFA
     if (cafa_leds()) return;
 #endif
@@ -457,6 +460,7 @@ static void ui_leds(void)
     }
     for (c = 0; c < FM1_NCOL; c++)
         fm1_led[c] = nl[c];
+#endif
 #endif
 }
 
@@ -2175,6 +2179,9 @@ static void shift_mark(void)
 }
 static void ui_input(void)
 {
+#if FELUCCA_CONTROLLER
+    cafa_input();
+#else
 #if FELUCCA_CAFA
     if (cafa_input()) return;
 #endif
@@ -2673,6 +2680,7 @@ static void ui_input(void)
         }
     }
     ui_notices();
+#endif
 }
 
 /* ---------------------------------------------------- panel setup --- */

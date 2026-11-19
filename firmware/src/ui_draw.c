@@ -36,6 +36,12 @@ static int32_t batt_shown(void)
 /* REC: filled, the selected track armed; outlined, another track armed */
 static void draw_rec_mark(int32_t x, uint16_t bg)
 {
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view) {
+        if(cafa_native_profile_view[32]&2u)cv_icon_mid(x,H_HEAD/2,16,ICON_X_REC,T_REC,bg);
+        return;
+    }
+#endif
     if (song.rec)
         cv_icon_mid(x, H_HEAD / 2, 16, (song.rec >> song.sel) & 1u ? ICON_X_REC : ICON_X_REC_O, T_REC, bg);
 }
@@ -453,7 +459,11 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
     uw = unit[0] ? text_w(&AF_S, unit) + 3 : 0;
     if (text_w(vf, val) + uw > room)
         vf = &AF_S;
-    sig = (uint8_t)str_hash(str_hash(song.sel + TSEL->eng_req * 4u + ux.gen * 64u, label), unit);
+    sig = (uint8_t)str_hash(str_hash(
+#if FELUCCA_CAFA
+        cafa_native_profile_view ? cafa_native_u14(cafa_native_profile_view+13) :
+#endif
+        song.sel + TSEL->eng_req * 4u + ux.gen * 64u, label), unit);
     snap = ui.force || sig != ui.roll[c].sig;           /* what the value is of: label, unit, track, engine, palette */
     if (kind == LK_TALL || blocks)
         ui.roll[c].from[0] = 0;                         /* (a tall card: no rolling digits) */
@@ -639,7 +649,13 @@ static void draw_foot(void)
                                                        /* come back, OCT+ KEEP, for the whole line */
     #if FELUCCA_CAFA
     if (cafa_native_view) {
-        ename=cafa_native_v4 ? "LOOM" : "CAFA"; hints=tiles=0; ret=0;
+        ename=cafa_native_v4 ?
+#if FELUCCA_CONTROLLER
+            "APP"
+#else
+            "LOOM"
+#endif
+            : "CAFA"; hints=tiles=0; ret=0;
         if(cafa.version==5 && cafa_native_view[1]==CAFA_DYNAMIC_PAGE) {
             memcpy(remote_engine,cafa_native_view+20,16);remote_engine[16]=0;ename=remote_engine;
         }
@@ -1237,7 +1253,7 @@ static void draw_columns(void)
 #define SPL_X0 ((240u - SPL_SQ) / 2u)               /* its top-left on the screen (x and y) */
 #define SPL_PAD 16                                  /* the text's inset: left (its ink), top and bottom (the capitals) */
 #define SPL_PITCH 20                                /* line to line */
-static const char *const SPLASH_LINES[] = {"Skiff", FELUCCA_VERSION, "on Felucca 1.1.5", "H\xFCgelton + community"};
+static const char *const SPLASH_LINES[] = {"Windjammer", FELUCCA_VERSION, "From Skiff", "and Felucca"};
 /* a band of two lines, h tall, at y on the screen: the first line's top at ly; the two lines' capitals declared
  * against al0..al1 (mode: AL_V the band centred there, AL_B the last baseline on al1) */
 static void splash_band(uint32_t y, uint32_t h, int32_t ly, const char *const *l, uint32_t mode, int32_t al0,
@@ -1310,13 +1326,31 @@ static void draw_uboot(void)
 {
     static uint8_t shown;
     char d[4] = {(char)('0' + ui.uboot % 10u), 0, 0, 0};
+#if FELUCCA_CAFA
+    char title[25],sub[25];
+    if(cafa_native_profile_view) {
+        cafa_native_text(title,cafa_native_profile_view+33,24);
+        cafa_native_text(sub,cafa_native_profile_view+57,24);
+        fmt_int(d,(int32_t)cafa_native_u14(cafa_native_profile_view+20));
+    }
+#endif
     if (!ui.force && shown == ui.uboot)
         return;
     shown = ui.uboot;
-    lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
+#if FELUCCA_CAFA
+    if(!cafa_native_profile_view)
+#endif
+        lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
     ui.head_sig = ~0u;
-    draw_text_box(0, 76, 240, &AF_M, "UPDATE MODE IN", T_TEXT, 1);
+    draw_text_box(0, 76, 240, &AF_M,
+#if FELUCCA_CAFA
+                  cafa_native_profile_view ? title :
+#endif
+                  "UPDATE MODE IN", T_TEXT, 1);
     draw_text_box(0, 102, 240, &AF_L, d, T_THEME, 1);
+#if FELUCCA_CAFA
+    if(cafa_native_profile_view)draw_text_box(0,132,240,&AF_S,sub,T_MID,1);
+#endif
     {   /* the two keycaps held, and what letting go does */
         int32_t w = kc_w(KC_OCTDN) + 3 + kh_ink(KC_OCTUP, "LET GO TO CANCEL"), x = HALF_UP(240 - w);
         cv_begin(240, KC_H + 2, T_BG);
@@ -1339,12 +1373,34 @@ static void draw_countin(void)
     static uint32_t shown;
     uint32_t total = cin_total, e = total - cin_left, j, sig = total * 64u + e + 1u;
     char sub[16];
+#if FELUCCA_CAFA
+    char title[25],hint[25];
+    if(cafa_native_profile_view) {
+        uint32_t k;
+        total=4u;e=0;
+        for(k=0;k<4u;k++){const uint8_t *cell=cafa_nv_cell(k);if(cell && (cell[2]&2u))e=k;}
+        sig=fnv(2166136261u,cafa_native_profile_view,cafa_native_profile_len);
+        cafa_native_text(title,cafa_native_profile_view+33,24);
+        cafa_native_text(sub,cafa_native_profile_view+57,15);
+        cafa_nv_line(hint,sizeof hint,0);
+    }
+#endif
     if (!ui.force && shown == sig)
         return;
     shown = sig;
-    lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
+#if FELUCCA_CAFA
+    if(!cafa_native_profile_view)
+#endif
+        lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
     ui.head_sig = ~0u;
-    draw_text_box(0, 44, 240, &AF_M, "COUNT-IN", T_TEXT, 1);
+    draw_text_box(0, 44, 240, &AF_M,
+#if FELUCCA_CAFA
+                  cafa_native_profile_view ? title :
+#endif
+                  "COUNT-IN", T_TEXT, 1);
+#if FELUCCA_CAFA
+    if(!cafa_native_profile_view)
+#endif
     if (total > 4u) {
         str_cpy(sub, "BAR 1 OF 2", sizeof sub);
         sub[4] = (char)('1' + e / 4u % 9u);
@@ -1358,12 +1414,25 @@ static void draw_countin(void)
         char d[2] = {(char)('4' - j), 0};
         int now = j == e % 4u, gone = j < e % 4u;
         uint16_t fill = now ? T_THEME : T_SURF;
+#if FELUCCA_CAFA
+        if(cafa_native_profile_view) {
+            const uint8_t *cell=cafa_nv_cell(j);
+            char label[5];
+            now=cell && (cell[2]&2u);gone=cell && !(cell[2]&3u);
+            fill=now?T_THEME:T_SURF;
+            if(cell){cafa_native_text(label,cell+3,4);d[0]=label[0]?label[0]:d[0];}
+        }
+#endif
         cv_rrect(x, 0, 48, CI_H, 8, fill, T_BG);
         GFX_HOOK_ALIGN(x, 0, x + 48, CI_H, AL_HV, "count-in beat centred in its cell");
         cv_text_in(x, CAP_IN(L, CI_H), 48, &AF_L, d, now ? T_INK : gone ? T_DIM : T_TEXT, fill);
     }
     cv_blit(12, CI_Y);
-    draw_text_box(0, CI_Y + CI_H + 14, 240, &AF_S, "recording starts after 1", T_MID, 1);   /* (the mockup's case) */
+    draw_text_box(0, CI_Y + CI_H + 14, 240, &AF_S,
+#if FELUCCA_CAFA
+                  cafa_native_profile_view ? hint :
+#endif
+                  "recording starts after 1", T_MID, 1);   /* (the mockup's case) */
     {   /* PLAY stops it */
         int32_t x = HALF_UP(240 - kh_ink(KC_PLAY, "STOP"));
         cv_begin(240, KC_H + 2, T_BG);
@@ -1493,6 +1562,9 @@ static void draw_confirm(void) { draw_confirm_blocks(); }   /* (U2: BLOCKS' dial
 static void ui_draw_page(uint32_t counting);
 static void ui_draw(void)
 {
+#if FELUCCA_CONTROLLER
+    cafa_draw();
+#else
 #if FELUCCA_CAFA
     if (cafa_draw()) return;
 #endif
@@ -1512,6 +1584,7 @@ static void ui_draw(void)
         return;
     ui_draw_page(counting);
     scr_shown();
+#endif
 }
 static void ui_draw_page(uint32_t counting)
 {

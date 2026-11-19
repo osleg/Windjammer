@@ -4,23 +4,23 @@
 """Make the site (GitHub Pages):
 
   index.html                  redirect to the installer (the old URL keeps working)
-  firmware/skiff-VER.fwsc     the package (+ LICENSE, LICENSING.md, LICENSES/: the package holds
+  firmware/windjammer-VER.fwsc     the package (+ LICENSE, LICENSING.md, LICENSES/: the package holds
                               JieLi SDK files under Apache-2.0, see LICENSING.md)
   webapp/installer/index.html index_pkg.html, self-contained (fm1pkg.js, fm1ota.js, metadata inlined)
   webapp/editor/index.html    editor.html (+ fukiai.ttf, FUKIAI-LICENSE.txt; (2.0) conv/: conv.js and build/conv/conv.wasm,
                               the converter its Restore and the installer use)
-  learn/                      Learn Skiff, the manual in chapters (web/learn, without its local/ review videos)
+  learn/                      Upstream Skiff manual (web/learn, without its local/ review videos)
   try/                        the browser emulator (build/emu from web/emu/build.sh, EMU_PREVIEW=0)
   panel.js, fonts/            the panel's drawing and the fonts the Learn page shares, at the paths it has in web/
   src/                        not touched
 
-  web/make_site.py build/skiff-X.Y.fwsc X.Y OUT_DIR [SMK_PACKAGE ...]
+  web/make_site.py build/windjammer-X.Y.fwsc X.Y OUT_DIR [SMK_PACKAGE ...]
 
 The packages must be ones made by tools/fm1pkg_make.py (Felucca's own loader, no vendor files).
 Their identities are read from them (FM-1_7xx, and for the SMK-37 builds SMK-37 Pro_7xx,
 SMK-37 Elite_7xx, MKE-P37_7xx, one per model); the installer picks the one for the connected
-model, and the device must report it after the install. Names: skiff-X.Y.fwsc (FM-1),
-skiff-X.Y-smk37.fwsc, skiff-X.Y-smk37-elite.fwsc, skiff-X.Y-smk37-mke.fwsc.
+model, and the device must report it after the install. Names: windjammer-X.Y.fwsc (FM-1),
+windjammer-X.Y-smk37.fwsc, windjammer-X.Y-smk37-elite.fwsc, windjammer-X.Y-smk37-mke.fwsc.
 """
 import json
 import re
@@ -56,7 +56,7 @@ def package(path, version):
     if b"FELUCCA-LOADER-1" not in raw:              # Felucca loader marker: never publish a package with vendor files
         raise SystemExit(f"{path}: no Felucca loader in it; the site ships only fm1pkg_make.py packages "
                          "(a package patched from an official one carries vendor files)")
-    return product, raw, f"skiff-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}{MODELS[model]}.fwsc"
+    return product, raw, f"windjammer-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}{MODELS[model]}.fwsc"
 
 
 def main(pkg, version, out, *more):
@@ -85,7 +85,7 @@ def main(pkg, version, out, *more):
     inst, ed, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "firmware"
     for d in (inst, ed, fw):
         d.mkdir(parents=True, exist_ok=True)
-    for old in fw.glob("skiff-*.fwsc"):          # the current packages only
+    for old in fw.glob("windjammer-*.fwsc"):          # the current packages only
         old.unlink()
     (inst / "index.html").write_text(html, encoding="utf-8")
     for _, data, n in pkgs:
@@ -96,7 +96,7 @@ def main(pkg, version, out, *more):
     for n in names:
         shutil.copy(lic / n, fw / "LICENSES" / n)
     (fw / "LICENSES" / "index.html").write_text(    # the installer links this folder: Pages lists no folders
-        '<!doctype html><meta charset="utf-8"><title>Skiff licences</title><h1>Licence texts</h1><ul>'
+        '<!doctype html><meta charset="utf-8"><title>Windjammer licences</title><h1>Licence texts</h1><ul>'
         + "".join(f'<li><a href="{n}">{n}</a></li>' for n in names)
         + '</ul><p><a href="../LICENSING.md">LICENSING.md</a> · <a href="../LICENSE">LICENSE (GPL-3.0)</a></p>\n',
         encoding="utf-8")
@@ -124,9 +124,9 @@ def main(pkg, version, out, *more):
     shutil.rmtree(out / "try", ignore_errors=True)
     shutil.copytree(emu, out / "try")
     (out / "index.html").write_text(
-        '<!doctype html><meta charset="utf-8"><title>Skiff</title>'
+        '<!doctype html><meta charset="utf-8"><title>Windjammer</title>'
         '<meta http-equiv="refresh" content="0; url=webapp/installer/">'
-        '<a href="webapp/installer/">Skiff installer</a>\n', encoding="utf-8")
+        '<a href="webapp/installer/">Windjammer installer</a>\n', encoding="utf-8")
     print(f"site: {out}: webapp/installer ({len(html)} B), webapp/editor, learn, try, "
           + ", ".join(f"firmware/{n} ({len(d)} B, {p})" for p, d, n in pkgs))
 
