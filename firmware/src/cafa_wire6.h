@@ -13,9 +13,9 @@
 #endif
 enum { WIRE6_HELLO=1, WIRE6_ACK, WIRE6_STATE, WIRE6_HEARTBEAT, WIRE6_BYE,
        WIRE6_INPUT, WIRE6_PROBE, WIRE6_OFFER, WIRE6_VIEW_PART, WIRE6_VIEW_DELTA, WIRE6_DIAG,
-       WIRE6_PART_READY };
+       WIRE6_PART_READY, WIRE6_REMOTE };
 enum { WIRE6_OK=0, WIRE6_UNSUPPORTED, WIRE6_INVALID, WIRE6_BUSY };
-enum { WIRE6_NATIVE_UI=9, WIRE6_NATIVE_KEEPALIVE=11, WIRE6_NATIVE_DELTA=12, WIRE6_NATIVE_PANEL=13, WIRE6_PANEL_MIDI=14, WIRE6_NATIVE_CHROME=15 };
+enum { WIRE6_NATIVE_UI=9, WIRE6_NATIVE_KEEPALIVE=11, WIRE6_NATIVE_DELTA=12, WIRE6_NATIVE_PANEL=13, WIRE6_PANEL_MIDI=14, WIRE6_NATIVE_CHROME=15, WIRE6_REMOTE_UI=16, WIRE6_REMOTE_COMPACT=17 };
 static const uint8_t wire6_capabilities[] = {1,2,3,WIRE6_NATIVE_UI,WIRE6_NATIVE_KEEPALIVE,WIRE6_NATIVE_DELTA,WIRE6_NATIVE_PANEL
 #if FELUCCA_CONTROLLER && FELUCCA_UART && !BOARD_SMK37
     ,WIRE6_PANEL_MIDI
@@ -144,7 +144,7 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
         off=4u+p[3];count=p[off++];
         if(count>8u || n!=9u+off+4u*count || p[2]>1u)return r;
         if(p[0]!=1u || !(WIRE6_AUDIO_MODES&(1u<<p[2]))) {r.result=WIRE6_UNSUPPORTED;return r;}
-        { uint8_t seen[128]={0};uint32_t required_instrument=0,keepalive_required=0,delta_required=0,panel_required=0,chrome_required=0;
+        { uint8_t seen[128]={0};uint32_t required_instrument=0,keepalive_required=0,delta_required=0,panel_required=0,chrome_required=0,compact_required=0;
           for(i=0;i<count;i++) {
               const uint8_t *q=p+off+4*i;
               if(!q[0] || q[3]>1u || seen[q[0]])return r;
@@ -154,8 +154,12 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
               if(q[0]==WIRE6_NATIVE_DELTA)delta_required=q[3];
               if(q[0]==WIRE6_NATIVE_PANEL)panel_required=q[3];
               if(q[0]==WIRE6_NATIVE_CHROME)chrome_required=q[3];
+              if(q[0]==WIRE6_REMOTE_COMPACT)compact_required=q[3];
               if((q[0]<=3u || q[0]==WIRE6_NATIVE_UI || q[0]==WIRE6_NATIVE_KEEPALIVE ||
                   q[0]==WIRE6_NATIVE_DELTA || q[0]==WIRE6_NATIVE_PANEL || q[0]==WIRE6_NATIVE_CHROME
+#if FELUCCA_CONTROLLER
+                  || q[0]==WIRE6_REMOTE_UI || q[0]==WIRE6_REMOTE_COMPACT
+#endif
 #if FELUCCA_CONTROLLER && FELUCCA_UART && !BOARD_SMK37
                   || q[0]==WIRE6_PANEL_MIDI
 #endif
@@ -164,6 +168,9 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
               else if(q[3]&1u){r.result=WIRE6_UNSUPPORTED;return r;}
           }
           if(!required_instrument || !(accepted&1u)) {r.result=WIRE6_UNSUPPORTED;return r;}
+          if((accepted&(1u<<(WIRE6_NATIVE_UI-1))) && (accepted&(1u<<(WIRE6_REMOTE_UI-1)))) {
+              r.result=WIRE6_UNSUPPORTED;return r;
+          }
           if(!(accepted&(1u<<(WIRE6_NATIVE_UI-1)))) {
               if(keepalive_required || panel_required){r.result=WIRE6_UNSUPPORTED;return r;}
               accepted&=~((1u<<(WIRE6_NATIVE_KEEPALIVE-1))|(1u<<(WIRE6_NATIVE_PANEL-1)));
@@ -177,6 +184,10 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
               if(chrome_required){r.result=WIRE6_UNSUPPORTED;return r;}
               accepted&=~(1u<<(WIRE6_NATIVE_CHROME-1));
           }
+          if(!(accepted&(1u<<(WIRE6_REMOTE_UI-1)))) {
+              if(compact_required){r.result=WIRE6_UNSUPPORTED;return r;}
+              accepted&=~(1u<<(WIRE6_REMOTE_COMPACT-1));
+          }
         }
         c->session=(uint16_t)sid;c->phase=1;c->audio_mode=p[2];
         c->diagnostic=(uint8_t)(p[3]==21u && !memcmp(p+4,"org.fm1.skiff.keytime",21u) ? 1u :
@@ -189,6 +200,8 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
             if(accepted&(1u<<(id-1u)))c->accepted[c->accepted_count++]=id;
         }
         if(accepted&(1u<<(WIRE6_NATIVE_CHROME-1)))c->accepted[c->accepted_count++]=WIRE6_NATIVE_CHROME;
+        if(accepted&(1u<<(WIRE6_REMOTE_UI-1)))c->accepted[c->accepted_count++]=WIRE6_REMOTE_UI;
+        if(accepted&(1u<<(WIRE6_REMOTE_COMPACT-1)))c->accepted[c->accepted_count++]=WIRE6_REMOTE_COMPACT;
         r.result=WIRE6_OK;return r;
     }
     if(!c->phase || c->session!=sid)return r;
@@ -204,6 +217,10 @@ static wire6_reply_t wire6_receive(wire6_link_t *c,const uint8_t *f,uint32_t n,u
         return r;
     }
     if(f[4]==WIRE6_BYE && n==9u) {r.action=WIRE6_CLOSE;return r;}
+    if(wire6_has(c,WIRE6_REMOTE_UI) &&
+       (f[4]==WIRE6_STATE || f[4]==WIRE6_VIEW_PART || f[4]==WIRE6_VIEW_DELTA)) {
+        r.action=WIRE6_SEND_ACK;r.result=WIRE6_UNSUPPORTED;return r;
+    }
     if(f[4]==WIRE6_HEARTBEAT && n==9u) {
         c->last_ms=now;r.action=WIRE6_SEND_ACK;r.result=WIRE6_OK;r.renew=1;return r;
     }

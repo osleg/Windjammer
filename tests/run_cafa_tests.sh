@@ -8,6 +8,8 @@ $CC -std=c99 -Wall -Wextra ${CAFA_TEST_CFLAGS:-} tests/cafa_protocol_test.c -o b
 build/cafa-tests/protocol
 $CC -O1 -w ${CAFA_TEST_CFLAGS:-} -Ibuild/gen -Ifirmware/src tests/cafa_wire6_test.c -lm -o build/cafa-tests/wire6
 build/cafa-tests/wire6
+$CC -O1 -w ${CAFA_TEST_CFLAGS:-} -Ibuild/gen -Ifirmware/src tests/cafa_remote_test.c -lm -o build/cafa-tests/remote
+build/cafa-tests/remote
 $CC -O1 -w ${CAFA_TEST_CFLAGS:-} -Ibuild/gen -Ifirmware/src tests/cafa_panel_midi_test.c -lm -o build/cafa-tests/panel-midi
 build/cafa-tests/panel-midi
 $CC -O1 -w ${CAFA_TEST_CFLAGS:-} -Ibuild/gen -Ifirmware/src tests/cafa_diag_test.c -lm -o build/cafa-tests/diag

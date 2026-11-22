@@ -16,6 +16,12 @@
 #include <time.h>
 #include <math.h>
 #include <stdint.h>
+#if FELUCCA_CONTROLLER
+/* Simulate the aligned tail between the linked pool and its reserve. */
+static uint32_t host_mode_pool[256u*1024u/sizeof(uint32_t)];
+#define MODE_POOL_START host_mode_pool
+#define MODE_POOL_LIMIT (host_mode_pool + sizeof host_mode_pool/sizeof *host_mode_pool)
+#endif
 #include <stdlib.h>
 #include <string.h>
 #define __attribute__(x)

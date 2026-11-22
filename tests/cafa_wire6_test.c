@@ -221,6 +221,7 @@ static void panel_led_contract(void)
     assert(!memcmp(expected,(const void *)fm1_led_breath,FM1_NCOL));
     wire6_leave();
 }
+#ifndef CAFA_REMOTE_TEST
 int main(void)
 {
     uint8_t f[147],out[128],saved[138];unsigned n,last;
@@ -379,3 +380,4 @@ int main(void)
     puts("Open wire-6: discovery/rejections preserve standalone; shared owner, first-state takeover, full input drawn context, stale isolation, expiry and BYE passed");
     return 0;
 }
+#endif

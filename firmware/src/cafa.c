@@ -14,6 +14,7 @@ static uint8_t cafa_drawn[CAFA_DYNAMIC_BYTES] __attribute__((section(".bss.cafa_
 #define WIRE6_AUDIO_MODES 1u
 #endif
 #include "cafa_wire6.h"
+#include "cafa_remote_wire.h"
 #if FELUCCA_DIAG
 #include "windjammer_marker_detector.h"
 #endif
@@ -34,6 +35,25 @@ static uint8_t wire6_drawn_prefs, wire6_drawn_screen, wire6_drawn_variant;
 static uint8_t wire6_backdrop_dirty;
 static uint8_t wire6_region_dirty, wire6_led_dirty;
 static uint8_t wire6_part_ready_pending;
+#if FELUCCA_CONTROLLER
+#include "mode_pool.h"
+/* The pixel buffers borrow the free pool tail for the lifetime of the session. */
+typedef struct {
+    uint16_t framebuffer[240u*240u];
+    uint16_t cache[REMOTE_TILES*REMOTE_PIXELS];
+    uint16_t staging[REMOTE_PIXELS];
+    uint16_t dma[REMOTE_PIXELS];
+} remote_pixels_t;
+static remote_pixels_t *remote_pixels;
+static struct {
+    uint8_t ready[REMOTE_TILES], covered[REMOTE_GRID*REMOTE_GRID], dirty[REMOTE_GRID*REMOTE_GRID];
+    uint8_t leds[REMOTE_LED_BYTES], last[WIRE6_MAX_BODY];
+    uint16_t stage_slot, stage_len, last_len, last_serial, present_serial, present_cursor;
+    uint16_t covered_count;
+    uint8_t last_valid, presenting, recovering, shown;
+    uint32_t context;
+} remote;
+#endif
 static uint16_t wire6_part_ready_session,wire6_part_ready_revision,wire6_part_ready_offset;
 static int wire6_input(void),wire6_draw(void),wire6_leds(void);
 #ifndef FELUCCA_DIAG
@@ -308,11 +328,158 @@ static void wire6_leave(void)
     wire6.view=wire6_buffer_a;wire6.stage=wire6_buffer_b;
     wire6_dirty=0;wire6_drawn_len=0;wire6_device_owned=0;wire6_backdrop_dirty=0;
     wire6_region_dirty=0;
+#if FELUCCA_CONTROLLER
+    if(remote_pixels) {
+        if(remote.presenting)lcd_sync();
+        mode_pool_release(&remote);
+        remote_pixels=0;
+    }
+    memset(&remote,0,sizeof remote);remote.recovering=1;
+#endif
     cafa_native_profile_reset();
 #if FELUCCA_CONTROLLER
     if(cafa_idle_menu)cafa_native_device_open_local();
 #endif
 }
+#if FELUCCA_CONTROLLER
+static void remote_reset(void)
+{
+    remote.stage_len=remote.covered_count=0;
+    memset(remote.ready,0,sizeof remote.ready);
+    memset(remote.covered,0,sizeof remote.covered);
+    memset(remote.dirty,0,sizeof remote.dirty);
+    remote.recovering=1;remote.shown=0;
+}
+static int remote_ack(uint16_t serial,uint8_t result)
+{
+    uint8_t p[2]={WIRE6_REMOTE,result};
+    if(!cafa_send_to(6,wire6.session,WIRE6_ACK,serial,p,2u)) {
+        wire6_leave();return 0;
+    }
+    return 1;
+}
+static void remote_finish(void)
+{
+    uint32_t epoch=0;uint8_t source=0,first=wire6.phase==1u;
+    lcd_sync();remote.presenting=0;
+    if(first) {
+#if FELUCCA_DIRECT_PCM
+        epoch=direct.epoch;source=wire6.audio_mode==1u ? (direct.alt ? 2u : 1u):0u;
+        direct_session_stop();
+#endif
+#if FELUCCA_CONTROLLER
+        cafa_idle_menu=cafa_idle_dirty=0;cafa_native_device_reset();
+#endif
+        cafa_usb_return_on=0;cafa_audio_on=1;cafa_silence_standalone();
+        cafa_first=1;cafa_tx_serial=0;cafa_buttons=cafa_keys=0;
+        wire6.phase=2;scr_wake_now();
+    }
+    wire6.drawn_context=remote.context;
+    remote.recovering=0;remote.shown=1;wire6_led_dirty=1;
+    if(!remote_ack(remote.present_serial,WIRE6_OK))return;
+#if FELUCCA_DIRECT_PCM
+    if(first)direct_session_publish(epoch,source,wire6.diagnostic);
+#else
+    if(first && wire6.audio_mode==1u)cafa_usb_return_on=1;
+#endif
+#if FELUCCA_CONTROLLER
+    if(first) {
+        cafa_panel_midi_active=(uint8_t)wire6_has(&wire6,WIRE6_PANEL_MIDI);
+        cafa_panel_midi_overflow=0;
+    }
+#endif
+}
+/* One tile per service call keeps USB and audio polling between LCD transfers. */
+static void remote_service(void)
+{
+    uint32_t pos,x,y,row;
+    if(!remote.presenting)return;
+    while(remote.present_cursor<REMOTE_GRID*REMOTE_GRID && !remote.dirty[remote.present_cursor])
+        remote.present_cursor++;
+    if(remote.present_cursor==REMOTE_GRID*REMOTE_GRID) {remote_finish();return;}
+    pos=remote.present_cursor++;remote.dirty[pos]=0;
+    x=(pos%REMOTE_GRID)*16u;y=(pos/REMOTE_GRID)*16u;
+    lcd_sync();
+    for(row=0;row<16u;row++)
+        memcpy(remote_pixels->dma+row*16u,remote_pixels->framebuffer+(y+row)*240u+x,32u);
+    lcd_blit(x,y,16u,16u,remote_pixels->dma);
+}
+static void remote_decode_packed(uint16_t *dst,const uint8_t *p,const uint8_t *end)
+{
+    while(p<end) {
+        uint8_t tag=*p++;
+        uint32_t count=remote_record_count(tag);
+        if(tag<64u) {
+            for(;count;count--,p+=3u)*dst++=remote_lcd_pixel(p);
+        } else {
+            uint16_t rgb=remote_lcd_pixel(p);
+            p+=3u;
+            for(;count;count--)*dst++=rgb;
+        }
+    }
+}
+static void remote_blit(const uint8_t *p)
+{
+    uint32_t i,x=(uint32_t)p[1]*16u,y=(uint32_t)p[2]*16u;
+    uint32_t pos=(uint32_t)p[2]*REMOTE_GRID+p[1];
+    for(i=0;i<16u;i++)memcpy(remote_pixels->framebuffer+(y+i)*240u+x,
+                               remote_pixels->cache+p[0]*REMOTE_PIXELS+i*16u,32u);
+    if(!remote.covered[pos]) {remote.covered[pos]=1;remote.covered_count++;}
+    remote.dirty[pos]=1;
+}
+static void remote_frame(const uint8_t *f,uint32_t n)
+{
+    uint32_t serial,off,count=0,i;
+    const uint8_t *p=f+9;
+    uint8_t result=WIRE6_INVALID;
+    if(n<10u || n>9u+WIRE6_MAX_BODY || !remote_pixels || !wire6.phase ||
+       !wire6_has(&wire6,WIRE6_REMOTE_UI) || wire6.session!=wire6_u14(f+5))return;
+    serial=wire6_u14(f+7);n-=9u;
+    if(remote.last_valid && serial==remote.last_serial) {
+        if(remote.presenting && serial==remote.present_serial && n==remote.last_len && !memcmp(p,remote.last,n))return;
+        remote_ack((uint16_t)serial,n==remote.last_len && !memcmp(p,remote.last,n) ? WIRE6_OK:WIRE6_INVALID);
+        return;
+    }
+    if(remote.last_valid && !wire6_newer(serial,remote.last_serial)) {
+        remote_ack((uint16_t)serial,WIRE6_INVALID);return;
+    }
+    if(remote.presenting) {remote_ack((uint16_t)serial,WIRE6_BUSY);return;}
+    if((p[0]==REMOTE_PACKED_TILE || p[0]==REMOTE_BLITS) && !wire6_has(&wire6,WIRE6_REMOTE_COMPACT)) {
+        remote_ack((uint16_t)serial,WIRE6_UNSUPPORTED);return;
+    }
+    if(!remote_payload_valid(p,n,&count)) {remote_ack((uint16_t)serial,result);return;}
+    switch(p[0]) {
+    case REMOTE_RESET: case REMOTE_RECOVER:remote_reset();break;
+    case REMOTE_TILE: case REMOTE_PACKED_TILE:
+        off=remote_u14(p+2);
+        if(off==0u) {remote.stage_slot=p[1];remote.stage_len=0;remote.ready[p[1]]=0;}
+        if(remote.stage_slot!=p[1] || off!=remote.stage_len)goto answer;
+        if(p[0]==REMOTE_PACKED_TILE)remote_decode_packed(remote_pixels->staging+off,p+4u,p+n);
+        else for(i=0;i<count;i++)remote_pixels->staging[off+i]=remote_lcd_pixel(p+4u+3u*i);
+        remote.stage_len=(uint16_t)(off+count);
+        if(remote.stage_len==REMOTE_PIXELS) {
+            memcpy(remote_pixels->cache+p[1]*REMOTE_PIXELS,remote_pixels->staging,sizeof remote_pixels->staging);
+            remote.ready[p[1]]=1;remote.stage_len=0;
+        }
+        break;
+    case REMOTE_BLIT: case REMOTE_BLITS:
+        for(i=1u;i<n;i+=3u)if(!remote.ready[p[i]])goto answer;
+        for(i=1u;i<n;i+=3u)remote_blit(p+i);
+        break;
+    case REMOTE_PRESENT:
+        if(remote.recovering && remote.covered_count!=REMOTE_GRID*REMOTE_GRID)goto answer;
+        remote.context=remote_u28(p+1);memcpy(remote.leds,p+5,REMOTE_LED_BYTES);
+        remote.presenting=1;remote.present_serial=(uint16_t)serial;remote.present_cursor=0;
+        break;
+    }
+    result=WIRE6_OK;
+    remote.last_valid=1;remote.last_serial=(uint16_t)serial;
+    remote.last_len=(uint16_t)n;memcpy(remote.last,p,n);
+    wire6.last_ms=fm1_ms;
+answer:
+    if(p[0]!=REMOTE_PRESENT || result!=WIRE6_OK)remote_ack((uint16_t)serial,result);
+}
+#endif
 static int wire6_frame(const uint8_t *p,uint32_t n)
 {
     wire6_reply_t r;uint8_t payload[6u+4u*8u],i,count;
@@ -326,7 +493,21 @@ static int wire6_frame(const uint8_t *p,uint32_t n)
         memset(wire6_buffer_a,0,sizeof wire6_buffer_a);
         wire6.view=wire6_buffer_a;wire6.stage=wire6_buffer_b;
     }
+#if FELUCCA_CONTROLLER
+    if(n>=9u && p[4]==WIRE6_REMOTE) {remote_frame(p,n);return 1;}
+#endif
     r=wire6_receive(&wire6,p,n,fm1_ms);
+#if FELUCCA_CONTROLLER
+    if(r.command==WIRE6_HELLO && r.result==WIRE6_OK && wire6.phase==1 &&
+       wire6_has(&wire6,WIRE6_REMOTE_UI) && !remote_pixels) {
+        remote_pixels=mode_pool_claim(&remote,sizeof *remote_pixels);
+        if(remote_pixels)remote_reset();
+        else {
+            wire6_leave();
+            r.result=WIRE6_BUSY;
+        }
+    }
+#endif
 #if FELUCCA_DIAG
     if(r.command==WIRE6_HELLO && r.result==WIRE6_OK && wire6.diagnostic)
         sx_diag_transport=1;
@@ -334,11 +515,17 @@ static int wire6_frame(const uint8_t *p,uint32_t n)
     if(!r.action)return 1;
     if(r.action==WIRE6_CLOSE) {wire6_leave();return 1;}
     if(r.action==WIRE6_SEND_OFFER) {
+        static const uint8_t extended_capabilities[]={WIRE6_NATIVE_CHROME
+#if FELUCCA_CONTROLLER
+            ,WIRE6_REMOTE_UI,WIRE6_REMOTE_COMPACT
+#endif
+        };
+        const uint8_t *capabilities=r.serial ? extended_capabilities : wire6_capabilities;
         payload[0]=1;payload[1]=2;payload[2]=WIRE6_AUDIO_MODES;cafa_put14(payload+3,156);
         /* Page zero retains the original eight-record maximum for older apps. */
-        payload[5]=r.serial ? 1u : sizeof wire6_capabilities;count=6;
+        payload[5]=r.serial ? sizeof extended_capabilities : sizeof wire6_capabilities;count=6;
         for(i=0;i<payload[5];i++) {
-            payload[count++]=r.serial ? WIRE6_NATIVE_CHROME : wire6_capabilities[i];payload[count++]=1;
+            payload[count++]=capabilities[i];payload[count++]=1;
             payload[count++]=0;payload[count++]=0;
         }
         if(!cafa_send_to(6,r.session,WIRE6_OFFER,r.serial,payload,count) && wire6.phase)wire6_leave();
@@ -441,6 +628,9 @@ static int wire6_frame(const uint8_t *p,uint32_t n)
 static void cafa_part_ready(void)
 {
     uint8_t offset[2];
+#if FELUCCA_CONTROLLER
+    remote_service();
+#endif
     if(!wire6_part_ready_pending || wire6.session!=wire6_part_ready_session ||
        !wire6.phase || wire6.stage_revision!=wire6_part_ready_revision ||
        wire6.stage_len!=wire6_part_ready_offset) {
@@ -680,6 +870,9 @@ static int wire6_draw(void)
 {
     const uint8_t *p=wire6.view;uint32_t k;char title[17],sub[13],b[28];
     if(wire6.phase!=2)return 0;
+#if FELUCCA_CONTROLLER
+    if(wire6_has(&wire6,WIRE6_REMOTE_UI))return 1;
+#endif
     if(p[0]==CAFA_NATIVE_KIND) {
         int full=wire6_dirty==2 || (wire6_region_dirty&CAFA_PAINT_FULL) ||
                  wire6_drawn_len<CAFA_NATIVE_HEADER ||
@@ -771,6 +964,9 @@ static __attribute__((noinline)) int cafa_draw(void)
 #if FELUCCA_CONTROLLER
     static uint8_t countdown_drawn;
     if(ui.uboot) {
+#if FELUCCA_CONTROLLER
+        if(wire6.phase && wire6_has(&wire6,WIRE6_REMOTE_UI))wire6_leave();
+#endif
         if(countdown_drawn!=ui.uboot) {
             char seconds[8];
             fmt_int(seconds,(int32_t)ui.uboot);
@@ -787,6 +983,9 @@ static __attribute__((noinline)) int cafa_draw(void)
         cafa_idle_dirty=1;
         ui.force=1;
     }
+#endif
+#if FELUCCA_CONTROLLER
+    if(remote.presenting)return 1;
 #endif
     if(wire6.phase==2)return wire6_draw();
 #if FELUCCA_CONTROLLER
@@ -903,6 +1102,21 @@ static int wire6_leds(void)
     if(wire6.phase!=2)return 0;
     if(!wire6_led_dirty)return 1;
     wire6_led_dirty=0;
+#if FELUCCA_CONTROLLER
+    if(wire6_has(&wire6,WIRE6_REMOTE_UI)) {
+        const uint8_t *leds=remote.leds;
+        led_pos_init();
+        for(i=0;i<4u;i++) {
+            const uint8_t *q=leds+7u*i;
+            uint32_t buttons=wire6_u14(q),keys=wire6_u28(q+3);
+            for(k=0;k<14u;k++)led_put(masks[i],panel.btn[k],(buttons>>k)&1u);
+            for(k=0;k<27u;k++)led_put(masks[i],LED_KEY0+k,(keys>>k)&1u);
+            if(q[2]&1u)masks[i][LED_PLAY_GREEN>>3]|=1u<<(LED_PLAY_GREEN&7u);
+        }
+        fm1_led_dim_level(leds[28]);
+        goto apply;
+    }
+#endif
     if(wire6.view_len>=CAFA_NATIVE_HEADER && wire6.view[0]==CAFA_NATIVE_KIND) {
         static uint8_t positions_ready;
         const uint8_t *leds=cafa_native_section(wire6.view,wire6.view_len,CAFA_NATIVE_LEDS,0);
@@ -923,6 +1137,7 @@ static int wire6_leds(void)
             fm1_led_dim_level(settings_leds==LEDS_DIM_LO);
         }
     }
+apply:
     for(c=0;c<FM1_NCOL;c++) {
         fm1_led[c]=masks[0][c];fm1_led_dim[c]=masks[1][c];
         fm1_led_breath[c]=masks[2][c];fm1_led_mid[c]=masks[3][c];

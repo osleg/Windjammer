@@ -8,8 +8,10 @@
 #define FELUCCA_OTA 1
 #define FELUCCA_UAC 1
 #define FELUCCA_UAC_OUT 1
-#ifdef HOST_DIAG_PEER
+#if defined(HOST_DIAG_PEER) || defined(HOST_REMOTE_PEER)
 #define FELUCCA_CONTROLLER 1
+#endif
+#ifdef HOST_DIAG_PEER
 #define FELUCCA_DIAG 1
 static void cafa_diag_pcm(uint32_t,uint32_t);
 static void cafa_diag_dac(uint32_t,uint32_t);
@@ -72,6 +74,7 @@ int main(int argc,char **argv)
 #else
             if (ota_frame_get(&p,&size)) { cafa_frame(p,size); ota_frame_done(); cafa_part_ready(); }
 #endif
+            cafa_part_ready();
             cafa_input();
             cafa_draw();
         }

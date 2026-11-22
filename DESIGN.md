@@ -4,6 +4,14 @@ How this firmware looks and behaves. Every screen and feature follows this page.
 
 Each rule comes from what FM-1 owners said about the stock firmware, Felucca and the other community firmwares, in GitHub issues and Discussions, forums and reviews. The issue numbers in brackets are Felucca's unless marked.
 
+## Windjammer companion display profiles
+
+Windjammer provides the [Native UI](docs/native-ui-wire.md) and [Remote UI](docs/remote-ui-wire.md) profiles on the same physical controls. Native UI applies the Skiff-derived design below to all 12 button families with content supplied by the app. It remains the default for FM-1 Instrument and the existing LOOM integration.
+
+Remote UI uses a host-composed 240 × 240 RGB565 screen and LED states. The host decides how its layouts, gestures, and display context work. Windjammer presents the screen, drives the LEDs and delivers physical button, key and encoder scans. During tile transfer, input still reports the last fully presented context. An update overlay belongs to the device and ends the remote session. When a session closes, Windjammer releases the temporary display workspace and returns to the waiting screen with local settings available.
+
+The FM-1 Instrument firmware emulation demo is one Remote UI host. Firmware packages run on Android and use the guest layout and gestures through the same public profile that any other host can implement. See the [high-level design](docs/HLD.md) for ownership and qualification.
+
 ## Rules
 
 1. **The K1–K4 legend is one row of four, in knob order, at the top of the screen,** because the physical knobs sit top right. Never a 2×2 grid.

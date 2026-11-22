@@ -21,16 +21,19 @@ flowchart LR
     Gear[External MIDI gear] -->|TRS MIDI input| Panel
 ```
 
-The [open companion protocol](docs/OPEN_PROTOCOL.md) uses negotiated wire-6 USB MIDI SysEx. The first update transfers a complete view. Compatible apps can then send field changes, with a full view used to recover synchronization. The controller reports the context actually shown on the display so an old input packet cannot edit a new target. MIDI notes and clock from the FM-1’s TRS input can be forwarded to the app if it negotiates panel MIDI.
+The [open companion protocol](docs/OPEN_PROTOCOL.md) uses negotiated wire-6 USB MIDI SysEx. In the native layout, the first update transfers a complete view. Compatible apps can then send field changes, with a full view used to recover synchronization. The controller reports the context actually shown on the display so an old input packet cannot edit a new target. MIDI notes and clock from the FM-1’s TRS input can be forwarded to the app if it negotiates panel MIDI.
+
+A compatible app can instead negotiate Remote UI and draw its own 240 × 240 screen and LED states on the FM-1. Windjammer sends physical controls back to that app. FM-1 Instrument’s firmware emulation mode demonstrates Remote UI by running a user-imported FM-1 firmware package on Android and drawing its screen on the controller. Windjammer remains installed. The demo requires a controller build that offers Remote UI. Native sessions, including the existing LOOM integration, continue to use the native layout.
 
 - [Native screen encoding and field bindings](docs/native-ui-wire.md)
+- [Remote UI wire format and session lifecycle](docs/remote-ui-wire.md)
 - [Screen coverage and ownership](docs/native-ui-coverage.md)
 - [High-level design](docs/HLD.md)
 - [Build, install and recovery](BUILDING.md)
 
 ## Build and release
 
-GitHub Actions builds the controller profile and checks the image, audio, native UI, protocol, and USB behavior. Successful tag builds publish a firmware release with checksums, license notices, and the corresponding source revision. The [web tools](https://osleg.github.io/Windjammer/) update from the published release. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
+GitHub Actions builds the controller profile and checks the image, audio, native and remote UI, protocol, and USB behavior. Successful tag builds publish a firmware release with checksums, license notices, and the corresponding source revision. The [web tools](https://osleg.github.io/Windjammer/) update from the published release. See the [firmware workflow](.github/workflows/firmware.yml) and [local build guide](BUILDING.md).
 
 ## License and credits
 

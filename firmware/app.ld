@@ -35,6 +35,8 @@ SECTIONS
     _data_load = LOADADDR(.data);
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
+    /* Mode workspace uses only the unallocated tail, preserving the 8 KiB reserve. */
+    _mode_pool_limit = ORIGIN(POOL) + LENGTH(POOL) - 8192;
     /* Keep legacy retained objects at their existing addresses. Companion
      * scratch follows them and is explicitly initialized by its owner. */
     .noinit (NOLOAD) : { *(.noinit) *(.noinit.cafa_ui) } > NOINIT

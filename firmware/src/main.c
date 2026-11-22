@@ -334,6 +334,9 @@ static void fm1_main(void)
                 || cafa_audio_on
 #endif
                 || cafa_release_guard
+#if FELUCCA_CONTROLLER
+                || (wire6.phase && wire6_has(&wire6,WIRE6_REMOTE_UI))
+#endif
 #endif
             ) {
                 if (ui.uboot) {
